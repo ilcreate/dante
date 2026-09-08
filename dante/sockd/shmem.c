@@ -164,6 +164,8 @@ shmem_setup(void)
                                        1)) == MAP_FAILED)
       serr("%s: failed to mmap shmeminfo", function);
 
+   sockd_stats_init(&sockscf.shmeminfo->stats, time(NULL));
+
    /* can unlink this file; all children will inherit the fd. */
    if (unlink(sockscf.shmem_fnamebase) != 0)
       serr("%s: failed to unlink shmemfile %s",

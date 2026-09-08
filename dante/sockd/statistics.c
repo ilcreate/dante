@@ -43,8 +43,436 @@
 
 #include "common.h"
 
+#if SOCKD_STATS_TEST
+#undef close
+#undef snprintf
+#undef socket
+#endif /* SOCKD_STATS_TEST */
+
 static const char rcsid[] =
 "$Id: statistics.c,v 1.33 2013/10/27 15:24:43 karls Exp $";
+
+#define SOCKD_STATS_REQUEST_MAX (4096)
+#define SOCKD_STATS_RESPONSE_MAX (4096)
+#define SOCKD_STATS_IO_TIMEOUT_SECONDS (1)
+
+static void
+add_counter(uint64_t *counter, const uint64_t value)
+{
+   if (UINT64_MAX - *counter < value)
+      *counter = UINT64_MAX;
+   else
+      *counter += value;
+}
+
+void
+sockd_stats_init(sockd_stats_t *stats, const time_t started_at)
+{
+   bzero(stats, sizeof(*stats));
+   stats->schema_version = SOCKD_STATS_SCHEMA_VERSION;
+   stats->started_at     = started_at;
+}
+
+void
+sockd_stats_add(sockd_stats_t *stats, const sockd_stat_event_t event,
+                const uint64_t value)
+{
+   switch (event) {
+      case SOCKD_STAT_CLIENT_ACCEPTED:
+         add_counter(&stats->client_connections_accepted, value);
+         break;
+
+      case SOCKD_STAT_CLIENT_DROPPED:
+         add_counter(&stats->client_connections_dropped, value);
+         break;
+
+      case SOCKD_STAT_NEGOTIATION_FAILED:
+         add_counter(&stats->negotiation_failures, value);
+         break;
+
+      case SOCKD_STAT_REQUEST_FAILED:
+         add_counter(&stats->request_failures, value);
+         break;
+
+      case SOCKD_STAT_SESSION_ESTABLISHED:
+         add_counter(&stats->sessions_established, value);
+         add_counter(&stats->sessions_active, value);
+         break;
+
+      case SOCKD_STAT_SESSION_CLOSED:
+         add_counter(&stats->sessions_closed, value);
+         if (value >= stats->sessions_active)
+            stats->sessions_active = 0;
+         else
+            stats->sessions_active -= value;
+         break;
+
+      case SOCKD_STAT_SESSION_ERROR:
+         add_counter(&stats->session_errors, value);
+         break;
+
+      case SOCKD_STAT_CLIENT_READ_BYTES:
+         add_counter(&stats->client_read_bytes, value);
+         break;
+
+      case SOCKD_STAT_CLIENT_WRITTEN_BYTES:
+         add_counter(&stats->client_written_bytes, value);
+         break;
+
+      case SOCKD_STAT_TARGET_READ_BYTES:
+         add_counter(&stats->target_read_bytes, value);
+         break;
+
+      case SOCKD_STAT_TARGET_WRITTEN_BYTES:
+         add_counter(&stats->target_written_bytes, value);
+         break;
+   }
+}
+
+#if !SOCKD_STATS_TEST
+void
+sockd_stats_update(const sockd_stat_event_t event, const uint64_t value)
+{
+   if (sockscf.shmeminfo == NULL)
+      return;
+
+   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_add(&sockscf.shmeminfo->stats, event, value);
+   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+}
+
+void
+sockd_stats_update_io(const uint64_t client_read,
+                      const uint64_t client_written,
+                      const uint64_t target_read,
+                      const uint64_t target_written)
+{
+   sockd_stats_t *stats;
+
+   if (sockscf.shmeminfo == NULL
+   ||  (client_read == 0 && client_written == 0
+     && target_read == 0 && target_written == 0))
+      return;
+
+   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   stats = &sockscf.shmeminfo->stats;
+   sockd_stats_add(stats, SOCKD_STAT_CLIENT_READ_BYTES, client_read);
+   sockd_stats_add(stats, SOCKD_STAT_CLIENT_WRITTEN_BYTES, client_written);
+   sockd_stats_add(stats, SOCKD_STAT_TARGET_READ_BYTES, target_read);
+   sockd_stats_add(stats, SOCKD_STAT_TARGET_WRITTEN_BYTES, target_written);
+   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+}
+
+void
+sockd_stats_snapshot(sockd_stats_t *stats)
+{
+   if (sockscf.shmeminfo == NULL) {
+      sockd_stats_init(stats, (time_t)0);
+      return;
+   }
+
+   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   *stats = sockscf.shmeminfo->stats;
+   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+}
+#endif /* !SOCKD_STATS_TEST */
+
+ssize_t
+sockd_stats_json(const sockd_stats_t *stats, const time_t now,
+                 char *response, const size_t responsesize)
+{
+   const intmax_t uptime = now > stats->started_at ?
+                              (intmax_t)(now - stats->started_at) : 0;
+   int length;
+
+   length = snprintf(response, responsesize,
+      "{\"schema_version\":%u,"
+      "\"server_version\":\"%s\","
+      "\"snapshot_time\":%"PRIdMAX","
+      "\"started_at\":%"PRIdMAX","
+      "\"uptime_seconds\":%"PRIdMAX","
+      "\"counters\":{"
+         "\"client_connections_accepted_total\":%"PRIu64","
+         "\"client_connections_dropped_total\":%"PRIu64","
+         "\"negotiation_failures_total\":%"PRIu64","
+         "\"request_failures_total\":%"PRIu64","
+         "\"sessions_established_total\":%"PRIu64","
+         "\"sessions_closed_total\":%"PRIu64","
+         "\"session_errors_total\":%"PRIu64","
+         "\"client_read_bytes_total\":%"PRIu64","
+         "\"client_written_bytes_total\":%"PRIu64","
+         "\"target_read_bytes_total\":%"PRIu64","
+         "\"target_written_bytes_total\":%"PRIu64
+      "},"
+      "\"gauges\":{\"sessions_active\":%"PRIu64"}}\n",
+      stats->schema_version,
+      VERSION,
+      (intmax_t)now,
+      (intmax_t)stats->started_at,
+      uptime,
+      stats->client_connections_accepted,
+      stats->client_connections_dropped,
+      stats->negotiation_failures,
+      stats->request_failures,
+      stats->sessions_established,
+      stats->sessions_closed,
+      stats->session_errors,
+      stats->client_read_bytes,
+      stats->client_written_bytes,
+      stats->target_read_bytes,
+      stats->target_written_bytes,
+      stats->sessions_active);
+
+   if (length < 0 || (size_t)length >= responsesize) {
+      errno = ENOSPC;
+      return -1;
+   }
+
+   return length;
+}
+
+static ssize_t
+format_http_response(const char *status, const char *extra_headers,
+                     const char *body, char *response,
+                     const size_t responsesize)
+{
+   int length;
+
+   length = snprintf(response, responsesize,
+                     "HTTP/1.1 %s\r\n"
+                     "Content-Type: application/json\r\n"
+                     "Content-Length: %lu\r\n"
+                     "Cache-Control: no-store\r\n"
+                     "Connection: close\r\n"
+                     "%s"
+                     "\r\n"
+                     "%s",
+                     status,
+                     (unsigned long)strlen(body),
+                     extra_headers == NULL ? "" : extra_headers,
+                     body);
+
+   if (length < 0 || (size_t)length >= responsesize) {
+      errno = ENOSPC;
+      return -1;
+   }
+
+   return length;
+}
+
+static int
+stats_setnonblocking(const int s)
+{
+   int flags;
+
+   if ((flags = fcntl(s, F_GETFL, 0)) == -1)
+      return -1;
+
+   return fcntl(s, F_SETFL, flags | O_NONBLOCK);
+}
+
+static int
+stats_wait_readable(const int s)
+{
+   struct timeval timeout;
+   fd_set rset;
+   int rc;
+
+   do {
+      bzero(&rset, sizeof(rset));
+      FD_SET(s, &rset);
+      timeout.tv_sec  = SOCKD_STATS_IO_TIMEOUT_SECONDS;
+      timeout.tv_usec = 0;
+      rc = select(s + 1, &rset, NULL, NULL, &timeout);
+   } while (rc == -1 && errno == EINTR);
+
+   if (rc == 0) {
+      errno = ETIMEDOUT;
+      return -1;
+   }
+
+   return rc;
+}
+
+ssize_t
+sockd_stats_http_response(const char *request, const size_t requestlen,
+                          const sockd_stats_t *stats, const time_t now,
+                          char *response, const size_t responsesize)
+{
+   static const char bad_request[] = "{\"error\":\"bad request\"}\n";
+   static const char not_found[] = "{\"error\":\"not found\"}\n";
+   static const char method_not_allowed[] =
+      "{\"error\":\"method not allowed\"}\n";
+   char line[512], method[16], path[256], version[16], body[2048];
+   size_t linelen;
+   ssize_t bodylen;
+
+   for (linelen = 0; linelen < requestlen && request[linelen] != '\n';
+        ++linelen)
+      /* LINTED */ /* EMPTY */;
+
+   if (linelen == requestlen || linelen == 0 || linelen >= sizeof(line))
+      return format_http_response("400 Bad Request", NULL, bad_request,
+                                  response, responsesize);
+
+   if (request[linelen - 1] == '\r')
+      --linelen;
+
+   memcpy(line, request, linelen);
+   line[linelen] = NUL;
+
+   if (sscanf(line, "%15s %255s %15s", method, path, version) != 3
+   ||  (strcmp(version, "HTTP/1.0") != 0
+     && strcmp(version, "HTTP/1.1") != 0))
+      return format_http_response("400 Bad Request", NULL, bad_request,
+                                  response, responsesize);
+
+   if (strcmp(method, "GET") != 0)
+      return format_http_response("405 Method Not Allowed", "Allow: GET\r\n",
+                                  method_not_allowed, response, responsesize);
+
+   if (strcmp(path, "/v1/stats") != 0)
+      return format_http_response("404 Not Found", NULL, not_found,
+                                  response, responsesize);
+
+   bodylen = sockd_stats_json(stats, now, body, sizeof(body));
+   if (bodylen == -1)
+      return -1;
+
+   return format_http_response("200 OK", NULL, body, response, responsesize);
+}
+
+int
+sockd_stats_api_open(const char *path)
+{
+   struct sockaddr_un address;
+   struct stat st;
+   int s, errno_s;
+
+   if (path == NULL || *path == NUL) {
+      errno = EINVAL;
+      return -1;
+   }
+
+   if (strlen(path) >= sizeof(address.sun_path)) {
+      errno = ENAMETOOLONG;
+      return -1;
+   }
+
+   if (lstat(path, &st) == 0) {
+      if (!S_ISSOCK(st.st_mode)) {
+         errno = EEXIST;
+         return -1;
+      }
+
+      if (unlink(path) == -1)
+         return -1;
+   }
+   else if (errno != ENOENT)
+      return -1;
+
+   if ((s = socket(AF_UNIX, SOCK_STREAM, 0)) == -1)
+      return -1;
+
+   bzero(&address, sizeof(address));
+   address.sun_family = AF_UNIX;
+#if HAVE_SOCKADDR_SA_LEN
+   address.sun_len = sizeof(address);
+#endif /* HAVE_SOCKADDR_SA_LEN */
+   memcpy(address.sun_path, path, strlen(path) + 1);
+
+   if (bind(s, (struct sockaddr *)&address, sizeof(address)) == -1
+   ||  chmod(path, S_IRUSR | S_IWUSR) == -1
+   ||  listen(s, 8) == -1
+   ||  stats_setnonblocking(s) == -1) {
+      errno_s = errno;
+      close(s);
+      unlink(path);
+      errno = errno_s;
+      return -1;
+   }
+
+   return s;
+}
+
+int
+sockd_stats_api_serve(const int s, const sockd_stats_t *stats,
+                      const time_t now)
+{
+   char request[SOCKD_STATS_REQUEST_MAX];
+   char response[SOCKD_STATS_RESPONSE_MAX];
+   ssize_t len, sent, written;
+   int client, errno_s, rc = 0;
+
+   if ((client = accept(s, NULL, NULL)) == -1)
+      return -1;
+
+   if (stats_setnonblocking(client) == -1) {
+      errno_s = errno;
+      close(client);
+      errno = errno_s;
+      return -1;
+   }
+
+   if (stats_wait_readable(client) == -1) {
+      errno_s = errno;
+      close(client);
+      errno = errno_s;
+      return -1;
+   }
+
+   len = recv(client, request, sizeof(request), 0);
+   if (len <= 0)
+      rc = -1;
+   else {
+      len = sockd_stats_http_response(request, (size_t)len, stats, now,
+                                      response, sizeof(response));
+      if (len == -1)
+         rc = -1;
+      else {
+         for (sent = 0; sent < len; sent += written) {
+            written = send(client, response + sent, (size_t)(len - sent), 0);
+            if (written == -1) {
+               if (errno == EINTR) {
+                  written = 0;
+                  continue;
+               }
+
+               rc = -1;
+               break;
+            }
+            else if (written == 0) {
+               errno = EPIPE;
+               rc = -1;
+               break;
+            }
+         }
+      }
+   }
+
+   errno_s = errno;
+   close(client);
+   errno = errno_s;
+   return rc;
+}
+
+void
+sockd_stats_api_close(const int s, const char *path)
+{
+   if (s != -1)
+      close(s);
+
+   sockd_stats_api_cleanup(path);
+}
+
+void
+sockd_stats_api_cleanup(const char *path)
+{
+   struct stat st;
+
+   if (path != NULL && lstat(path, &st) == 0 && S_ISSOCK(st.st_mode))
+      unlink(path);
+}
 
 
 int

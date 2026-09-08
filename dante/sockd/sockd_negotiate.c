@@ -619,6 +619,8 @@ run_negotiate()
                char reason[256];
                int takingtoolong = 0, erroriseof = 0;
 
+               sockd_stats_update(SOCKD_STAT_NEGOTIATION_FAILED, 1);
+
                if (negstatus == NEGOTIATE_EOF) {
                   error      = "eof from local client";
                   erroriseof = 1;

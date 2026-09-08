@@ -1884,6 +1884,7 @@ recv_io(s, io)
        * without problems.
        */
       io->allocated = 1;
+      sockd_stats_update(SOCKD_STAT_SESSION_ESTABLISHED, 1);
    }
 
    iostate.freefds -= fdreceived;
@@ -3468,6 +3469,11 @@ io_update(timenow, bwused, i_read, i_written,
             0 : (unsigned long)rule->bw_shmid,
         (unsigned long)packetrule->mstats_shmid);
 
+   sockd_stats_update_io(i_read == NULL ? 0 : i_read->bytes,
+                         i_written == NULL ? 0 : i_written->bytes,
+                         e_read == NULL ? 0 : e_read->bytes,
+                         e_written == NULL ? 0 : e_written->bytes);
+
    if (rule != NULL && rule->bw_shmid != 0 && bwused != 0) {
       SASSERTX(rule->bw != NULL);
       bw_update(rule->bw, bwused, timenow, lock);
@@ -3599,6 +3605,10 @@ io_delete(mother, io, badfd, status)
            || badfd == io->dst.s);
 
    SASSERTX(io->allocated);
+
+   sockd_stats_update(SOCKD_STAT_SESSION_CLOSED, 1);
+   if (status == IO_IOERROR || status == IO_ERROR || status == IO_TIMEOUT)
+      sockd_stats_update(SOCKD_STAT_SESSION_ERROR, 1);
 
    gettimeofday_monotonic(&tnow);
 

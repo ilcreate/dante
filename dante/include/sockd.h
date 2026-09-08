@@ -1633,6 +1633,8 @@ typedef struct {
    char              *pidfile;        /* name of pidfile.                     */
    unsigned char     pidfilewritten;  /* did we successfully write pidfile?   */
 
+   const char        *stats_socket;   /* statistics API Unix socket, or NULL. */
+
    size_t            serverc;         /* number of servers.                   */
 
    unsigned char     verifyonly;      /* syntax verification of config only.  */
@@ -1846,6 +1848,40 @@ typedef struct {
    } io;
 } statistic_t;
 
+#define SOCKD_STATS_SCHEMA_VERSION (1)
+
+typedef enum {
+   SOCKD_STAT_CLIENT_ACCEPTED = 0,
+   SOCKD_STAT_CLIENT_DROPPED,
+   SOCKD_STAT_NEGOTIATION_FAILED,
+   SOCKD_STAT_REQUEST_FAILED,
+   SOCKD_STAT_SESSION_ESTABLISHED,
+   SOCKD_STAT_SESSION_CLOSED,
+   SOCKD_STAT_SESSION_ERROR,
+   SOCKD_STAT_CLIENT_READ_BYTES,
+   SOCKD_STAT_CLIENT_WRITTEN_BYTES,
+   SOCKD_STAT_TARGET_READ_BYTES,
+   SOCKD_STAT_TARGET_WRITTEN_BYTES
+} sockd_stat_event_t;
+
+typedef struct {
+   uint32_t schema_version;
+   time_t   started_at;
+
+   uint64_t client_connections_accepted;
+   uint64_t client_connections_dropped;
+   uint64_t negotiation_failures;
+   uint64_t request_failures;
+   uint64_t sessions_established;
+   uint64_t sessions_active;
+   uint64_t sessions_closed;
+   uint64_t session_errors;
+   uint64_t client_read_bytes;
+   uint64_t client_written_bytes;
+   uint64_t target_read_bytes;
+   uint64_t target_written_bytes;
+} sockd_stats_t;
+
 typedef struct {
 #ifdef HAVE_VOLATILE_SIG_ATOMIC_T
    sig_atomic_t            noaddchild;          /* okay to do a addchild()?   */
@@ -1952,6 +1988,8 @@ struct config {
                                                     */
 
    struct {
+      sockd_stats_t stats;            /* process-shared statistics.           */
+
       /*
        * address of shmemconfig in mothers process.  Children
        * need to know so they can calculate the correct
@@ -4663,6 +4701,25 @@ int sockd_check_ipclatency(const char *description,
  * Returns true, and possibly prints a warning if we are overloaded.
  * Returns false if no overload condition is detected.
  */
+
+void sockd_stats_init(sockd_stats_t *stats, time_t started_at);
+void sockd_stats_add(sockd_stats_t *stats, sockd_stat_event_t event,
+                     uint64_t value);
+void sockd_stats_update(sockd_stat_event_t event, uint64_t value);
+void sockd_stats_update_io(uint64_t client_read, uint64_t client_written,
+                           uint64_t target_read, uint64_t target_written);
+void sockd_stats_snapshot(sockd_stats_t *stats);
+
+ssize_t sockd_stats_json(const sockd_stats_t *stats, time_t now,
+                         char *response, size_t responsesize);
+ssize_t sockd_stats_http_response(const char *request, size_t requestlen,
+                                  const sockd_stats_t *stats, time_t now,
+                                  char *response, size_t responsesize);
+
+int sockd_stats_api_open(const char *path);
+int sockd_stats_api_serve(int s, const sockd_stats_t *stats, time_t now);
+void sockd_stats_api_close(int s, const char *path);
+void sockd_stats_api_cleanup(const char *path);
 
 
       /*

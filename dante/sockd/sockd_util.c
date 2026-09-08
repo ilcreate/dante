@@ -501,6 +501,9 @@ sockdexit(code)
               childtype2string(sockscf.state.type));
    }
 
+   if (sockscf.state.type == PROC_MONITOR && pidismainmother(getppid()))
+      sockd_stats_api_cleanup(sockscf.option.stats_socket);
+
 #if HAVE_PROFILING
    if (chdir(SOCKS_PROFILEDIR) != 0) {
       if (sockscf.state.type == PROC_MOTHER)

@@ -2,6 +2,11 @@
 
 #include <sys/stat.h>
 #include <sys/un.h>
+#include <sys/wait.h>
+
+#undef close
+#undef snprintf
+#undef socket
 
 static int failures;
 
@@ -52,6 +57,10 @@ test_counter_updates(void)
    sockd_stats_add(&stats, SOCKD_STAT_SESSION_CLOSED, 50);
    TEST_CHECK(stats.sessions_active == 0);
    TEST_CHECK(stats.sessions_closed == 51);
+
+   stats.client_connections_accepted = UINT64_MAX - 1;
+   sockd_stats_add(&stats, SOCKD_STAT_CLIENT_ACCEPTED, 5);
+   TEST_CHECK(stats.client_connections_accepted == UINT64_MAX);
 }
 
 static void
@@ -79,6 +88,10 @@ test_json_snapshot(void)
    TEST_CHECK(strstr(json, "\"sessions_active\":2") != NULL);
    TEST_CHECK(strstr(json, "\"client_read_bytes_total\":123") != NULL);
 
+   length = sockd_stats_json(&stats, (time_t)90, json, sizeof(json));
+   TEST_CHECK(length > 0);
+   TEST_CHECK(strstr(json, "\"uptime_seconds\":0") != NULL);
+
    errno = 0;
    TEST_CHECK(sockd_stats_json(&stats, (time_t)130, json, 8) == -1);
    TEST_CHECK(errno == ENOSPC);
@@ -91,6 +104,8 @@ test_http_contract(void)
    const char post[] = "POST /v1/stats HTTP/1.1\r\n\r\n";
    const char missing[] = "GET /v1/missing HTTP/1.0\r\n\r\n";
    const char malformed[] = "garbage\r\n\r\n";
+   const char incomplete[] = "GET /v1/stats HTTP/1.1";
+   const char bad_version[] = "GET /v1/stats HTTP/2\r\n\r\n";
    sockd_stats_t stats;
    char response[4096];
    ssize_t length;
@@ -126,11 +141,62 @@ test_http_contract(void)
    TEST_CHECK(length > 0);
    TEST_CHECK(strncmp(response, "HTTP/1.1 400 Bad Request\r\n", 26) == 0);
 
+   length = sockd_stats_http_response(incomplete, sizeof(incomplete) - 1,
+                                      &stats, (time_t)130,
+                                      response, sizeof(response));
+   TEST_CHECK(length > 0);
+   TEST_CHECK(strncmp(response, "HTTP/1.1 400 Bad Request\r\n", 26) == 0);
+
+   length = sockd_stats_http_response(bad_version, sizeof(bad_version) - 1,
+                                      &stats, (time_t)130,
+                                      response, sizeof(response));
+   TEST_CHECK(length > 0);
+   TEST_CHECK(strncmp(response, "HTTP/1.1 400 Bad Request\r\n", 26) == 0);
+
    errno = 0;
    TEST_CHECK(sockd_stats_http_response(get, sizeof(get) - 1,
                                    &stats, (time_t)130,
                                    response, 16) == -1);
    TEST_CHECK(errno == ENOSPC);
+}
+
+static void
+test_unix_socket_validation(void)
+{
+   char directory[] = "/tmp/dante-stats-validation.XXXXXX";
+   char path[sizeof(directory) + 16];
+   char longpath[sizeof(((struct sockaddr_un *)0)->sun_path) + 1];
+   struct stat st;
+   int fd;
+
+   errno = 0;
+   TEST_CHECK(sockd_stats_api_open(NULL) == -1);
+   TEST_CHECK(errno == EINVAL);
+
+   errno = 0;
+   TEST_CHECK(sockd_stats_api_open("") == -1);
+   TEST_CHECK(errno == EINVAL);
+
+   memset(longpath, 'x', sizeof(longpath));
+   longpath[sizeof(longpath) - 1] = NUL;
+   errno = 0;
+   TEST_CHECK(sockd_stats_api_open(longpath) == -1);
+   TEST_CHECK(errno == ENAMETOOLONG);
+
+   TEST_CHECK(mkdtemp(directory) != NULL);
+   snprintf(path, sizeof(path), "%s/regular", directory);
+   fd = open(path, O_WRONLY | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
+   TEST_CHECK(fd >= 0);
+   if (fd >= 0)
+      close(fd);
+
+   errno = 0;
+   TEST_CHECK(sockd_stats_api_open(path) == -1);
+   TEST_CHECK(errno == EEXIST);
+   TEST_CHECK(lstat(path, &st) == 0 && S_ISREG(st.st_mode));
+
+   TEST_CHECK(unlink(path) == 0);
+   TEST_CHECK(rmdir(directory) == 0);
 }
 
 static void
@@ -144,12 +210,15 @@ test_unix_socket_endpoint(void)
    struct stat st;
    sockd_stats_t stats;
    ssize_t received;
-   int client, server;
+   int client, server, status;
+   pid_t child;
 
    TEST_CHECK(mkdtemp(directory) != NULL);
    snprintf(path, sizeof(path), "%s/stats.sock", directory);
 
    server = sockd_stats_api_open(path);
+   if (server < 0)
+      perror("sockd_stats_api_open");
    TEST_CHECK(server >= 0);
    TEST_CHECK(lstat(path, &st) == 0);
    TEST_CHECK(S_ISSOCK(st.st_mode));
@@ -178,8 +247,36 @@ test_unix_socket_endpoint(void)
    }
 
    close(client);
+
+   client = socket(AF_UNIX, SOCK_STREAM, 0);
+   TEST_CHECK(client >= 0);
+   TEST_CHECK(connect(client, (struct sockaddr *)&address, sizeof(address)) == 0);
+
+   child = fork();
+   TEST_CHECK(child >= 0);
+   if (child == 0) {
+      usleep(50000);
+      _exit(send(client, request, sizeof(request) - 1, 0)
+          == (ssize_t)(sizeof(request) - 1) ? EXIT_SUCCESS : EXIT_FAILURE);
+   }
+
+   TEST_CHECK(sockd_stats_api_serve(server, &stats, (time_t)130) == 0);
+   TEST_CHECK(waitpid(child, &status, 0) == child);
+   TEST_CHECK(WIFEXITED(status) && WEXITSTATUS(status) == EXIT_SUCCESS);
+   received = recv(client, response, sizeof(response) - 1, 0);
+   TEST_CHECK(received > 0);
+   close(client);
+
    sockd_stats_api_close(server, path);
    TEST_CHECK(lstat(path, &st) == -1 && errno == ENOENT);
+
+   server = sockd_stats_api_open(path);
+   TEST_CHECK(server >= 0);
+   sockd_stats_api_cleanup(path);
+   TEST_CHECK(lstat(path, &st) == -1 && errno == ENOENT);
+   if (server >= 0)
+      close(server);
+
    TEST_CHECK(rmdir(directory) == 0);
 }
 
@@ -189,6 +286,7 @@ main(void)
    test_counter_updates();
    test_json_snapshot();
    test_http_contract();
+   test_unix_socket_validation();
    test_unix_socket_endpoint();
 
    if (failures != 0) {

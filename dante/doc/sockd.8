@@ -53,6 +53,8 @@ sockd \- network proxyserver
 .IR file ]
 .RB [ \-p
 .IR file ]
+.RB [ \-S
+.IR unix-socket ]
 .SH DESCRIPTION
 .B Dante
 implements the socks standard and can function as a firewall between networks.
@@ -110,10 +112,31 @@ option in sockd.conf(5).
 will write the pid of the main process to this file.
 .IR file .
 .TP
+.BI \-S unix-socket
+Enables the read-only statistics API on the given Unix domain socket.
+The socket is created with mode 0600 and is owned by the user running
+.BR sockd .
+The API is disabled when this option is not specified.
+.TP
 .B \-v
 Displays
 .B Dante
 version.
+.SH STATISTICS API
+When enabled with
+.BR \-S ,
+the monitor process serves HTTP/1.0 and HTTP/1.1 requests over a Unix
+domain stream socket.  The versioned endpoint
+.B GET /v1/stats
+returns a JSON snapshot containing server and schema versions, timestamps,
+uptime, process-shared counters, and gauges.  The connection is closed after
+each response.  Other paths return 404 and methods other than GET return 405.
+.PP
+The counters cover accepted and pre-negotiation dropped clients, negotiation
+and request failures, established and closed sessions, session errors, and
+bytes read and written on the client and target sides.  The active sessions
+value is a gauge.  Counters remain available across worker rotation and
+configuration reload, but reset when the server is restarted.
 .SH SIGNALS
 .TP
 .B SIGHUP

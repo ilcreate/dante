@@ -1179,6 +1179,7 @@ moncontrol(1);
 
                gettimeofday_monotonic(&client.accepted);
                ++sockscf.stat.accepted;
+               sockd_stats_update(SOCKD_STAT_CLIENT_ACCEPTED, 1);
 
                slog(LOG_DEBUG, "accepted tcp client %s on address %s, fd %d",
                     sockaddr2string(&client.from, astr, sizeof(astr)),
@@ -1187,6 +1188,7 @@ moncontrol(1);
 
                if ((child = nextchild(PROC_NEGOTIATE, SOCKS_TCP)) == NULL) {
                   log_clientdropped(&client.from);
+                  sockd_stats_update(SOCKD_STAT_CLIENT_DROPPED, 1);
 
                   close(client.s);
                   continue;
@@ -1233,7 +1235,7 @@ usage(code)
 
    (void)fprintf(code == 0 ? stdout : stderr,
 "%s v%s.  Copyright (c) 1997 - 2024, Inferno Nettverk A/S, Norway.\n"
-"usage: %s [-DLNVdfhnv]\n"
+"usage: %s [-DLNVdfhnv] [-S <unix-socket>]\n"
 "   -D             : run in daemon mode\n"
 "   -L             : shows the license for this program\n"
 "   -N <number>    : fork of <number> servers [1]\n"
@@ -1243,6 +1245,7 @@ usage(code)
 "   -h             : print this information\n"
 "   -n             : disable TCP keep-alive\n"
 "   -p <filename>  : write pid to <filename> [%s]\n"
+"   -S <filename>  : expose GET /v1/stats on this Unix socket [disabled]\n"
 "   -v             : print version info\n",
                  PRODUCT,
                  VERSION,
@@ -1447,7 +1450,7 @@ serverinit(argc, argv)
    for (i = 0; i < ELEMENTS(sockscf.state.reservedfdv); ++i)
       sockscf.state.reservedfdv[i] = -1;
 
-   while ((ch = getopt(argc, argv, "DLN:Vd:f:hnp:v")) != -1) {
+   while ((ch = getopt(argc, argv, "DLN:S:Vd:f:hnp:v")) != -1) {
       switch (ch) {
          case 'D':
             sockscf.option.daemon = 1;
@@ -1468,6 +1471,10 @@ serverinit(argc, argv)
 
             break;
          }
+
+         case 'S':
+            sockscf.option.stats_socket = optarg;
+            break;
 
          case 'V':
             sockscf.option.verifyonly = 1;

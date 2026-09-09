@@ -1849,7 +1849,7 @@ typedef struct {
 } statistic_t;
 
 #define SOCKD_STATS_SCHEMA_VERSION  (1)
-#define SOCKD_STATS_SCHEMA_REVISION (2)
+#define SOCKD_STATS_SCHEMA_REVISION (3)
 
 typedef enum {
    SOCKD_STAT_CLIENT_ACCEPTED = 0,
@@ -1920,6 +1920,101 @@ typedef struct {
    uint64_t errors;
 } sockd_stats_session_t;
 
+typedef enum {
+   SOCKD_STATS_CONNECT_SUCCESS = 0,
+   SOCKD_STATS_CONNECT_REFUSED,
+   SOCKD_STATS_CONNECT_TIMEOUT,
+   SOCKD_STATS_CONNECT_UNREACHABLE,
+   SOCKD_STATS_CONNECT_NETWORK_ERROR,
+   SOCKD_STATS_CONNECT_RESOURCE_ERROR,
+   SOCKD_STATS_CONNECT_OTHER,
+   SOCKD_STATS_CONNECT_COUNT
+} sockd_stats_connect_t;
+
+typedef enum {
+   SOCKD_STATS_UDP_CLIENT_TO_TARGET = 0,
+   SOCKD_STATS_UDP_TARGET_TO_CLIENT,
+   SOCKD_STATS_UDP_DIRECTION_UNKNOWN,
+   SOCKD_STATS_UDP_DIRECTION_COUNT
+} sockd_stats_udp_direction_t;
+
+typedef enum {
+   SOCKD_STATS_UDP_DROP_BLOCKED = 0,
+   SOCKD_STATS_UDP_DROP_MALFORMED,
+   SOCKD_STATS_UDP_DROP_DNS_ERROR,
+   SOCKD_STATS_UDP_DROP_UNEXPECTED_SOURCE,
+   SOCKD_STATS_UDP_DROP_SEND_ERROR,
+   SOCKD_STATS_UDP_DROP_INTERNAL_ERROR,
+   SOCKD_STATS_UDP_DROP_OTHER,
+   SOCKD_STATS_UDP_DROP_COUNT
+} sockd_stats_udp_drop_t;
+
+typedef struct {
+   uint64_t received;
+   uint64_t forwarded;
+   uint64_t receive_errors;
+   uint64_t dropped[SOCKD_STATS_UDP_DROP_COUNT];
+} sockd_stats_udp_t;
+
+typedef enum {
+   SOCKD_STATS_WORKER_NEGOTIATE = 0,
+   SOCKD_STATS_WORKER_REQUEST,
+   SOCKD_STATS_WORKER_IO,
+   SOCKD_STATS_WORKER_UNKNOWN,
+   SOCKD_STATS_WORKER_COUNT
+} sockd_stats_worker_type_t;
+
+typedef struct {
+   uint64_t processes;
+   uint64_t slots_total;
+   uint64_t slots_free;
+   uint64_t slots_busy;
+   uint64_t spawn_failures;
+} sockd_stats_worker_t;
+
+typedef enum {
+   SOCKD_STATS_DECISION_SUCCESS = 0,
+   SOCKD_STATS_DECISION_FAILURE,
+   SOCKD_STATS_DECISION_COUNT
+} sockd_stats_decision_t;
+
+typedef enum {
+   SOCKD_STATS_AUTH_NONE = 0,
+   SOCKD_STATS_AUTH_USERNAME,
+   SOCKD_STATS_AUTH_GSSAPI,
+   SOCKD_STATS_AUTH_PAM,
+   SOCKD_STATS_AUTH_BSDAUTH,
+   SOCKD_STATS_AUTH_LDAP,
+   SOCKD_STATS_AUTH_RFC931,
+   SOCKD_STATS_AUTH_UNKNOWN,
+   SOCKD_STATS_AUTH_COUNT
+} sockd_stats_auth_t;
+
+typedef enum {
+   SOCKD_STATS_ACL_CLIENT = 0,
+   SOCKD_STATS_ACL_HOSTID,
+   SOCKD_STATS_ACL_SOCKS,
+   SOCKD_STATS_ACL_UNKNOWN,
+   SOCKD_STATS_ACL_COUNT
+} sockd_stats_acl_t;
+
+typedef enum {
+   SOCKD_STATS_DNS_FORWARD = 0,
+   SOCKD_STATS_DNS_REVERSE,
+   SOCKD_STATS_DNS_OPERATION_UNKNOWN,
+   SOCKD_STATS_DNS_OPERATION_COUNT
+} sockd_stats_dns_operation_t;
+
+typedef enum {
+   SOCKD_STATS_DNS_SUCCESS = 0,
+   SOCKD_STATS_DNS_NOT_FOUND,
+   SOCKD_STATS_DNS_TEMPORARY,
+   SOCKD_STATS_DNS_SYSTEM_ERROR,
+   SOCKD_STATS_DNS_INTERNAL_ERROR,
+   SOCKD_STATS_DNS_OTHER,
+   SOCKD_STATS_DNS_RESULT_COUNT
+} sockd_stats_dns_result_t;
+
 typedef struct {
    uint32_t schema_version;
    uint32_t schema_revision;
@@ -1943,6 +2038,13 @@ typedef struct {
                            [SOCKD_STATS_RESULT_COUNT];
    sockd_stats_session_t sessions[SOCKD_STATS_PROTOCOL_COUNT];
    uint64_t session_close_reason[SOCKD_STATS_CLOSE_COUNT];
+   uint64_t target_connect_attempts;
+   uint64_t target_connect_outcome[SOCKD_STATS_CONNECT_COUNT];
+   sockd_stats_udp_t udp[SOCKD_STATS_UDP_DIRECTION_COUNT];
+   sockd_stats_worker_t workers[SOCKD_STATS_WORKER_COUNT];
+   uint64_t auth[SOCKD_STATS_AUTH_COUNT][SOCKD_STATS_DECISION_COUNT];
+   uint64_t acl[SOCKD_STATS_ACL_COUNT][SOCKD_STATS_DECISION_COUNT];
+   uint64_t dns[SOCKD_STATS_DNS_OPERATION_COUNT][SOCKD_STATS_DNS_RESULT_COUNT];
 } sockd_stats_t;
 
 typedef struct {
@@ -4777,6 +4879,34 @@ void sockd_stats_add_session_started(sockd_stats_t *stats, int protocol,
                                      uint64_t value);
 void sockd_stats_add_session_closed(sockd_stats_t *stats, int protocol,
                                     iostatus_t status, uint64_t value);
+void sockd_stats_add_target_connect_attempt(sockd_stats_t *stats,
+                                            uint64_t value);
+void sockd_stats_add_target_connect_result(sockd_stats_t *stats, int error,
+                                           uint64_t value);
+void sockd_stats_add_udp_received(sockd_stats_t *stats,
+                                  sockd_stats_udp_direction_t direction,
+                                  uint64_t value);
+void sockd_stats_add_udp_forwarded(sockd_stats_t *stats,
+                                   sockd_stats_udp_direction_t direction,
+                                   uint64_t value);
+void sockd_stats_add_udp_receive_error(sockd_stats_t *stats,
+                                       sockd_stats_udp_direction_t direction,
+                                       uint64_t value);
+void sockd_stats_add_udp_drop(sockd_stats_t *stats,
+                              sockd_stats_udp_direction_t direction,
+                              sockd_stats_udp_drop_t reason, uint64_t value);
+void sockd_stats_set_worker_capacity(sockd_stats_t *stats, int type,
+                                     uint64_t processes, uint64_t slots_total,
+                                     uint64_t slots_free);
+void sockd_stats_add_worker_spawn_failure(sockd_stats_t *stats, int type,
+                                          uint64_t value);
+void sockd_stats_add_auth(sockd_stats_t *stats, int method, int success,
+                          uint64_t value);
+void sockd_stats_add_acl(sockd_stats_t *stats, int command, int permit,
+                         uint64_t value);
+void sockd_stats_add_dns(sockd_stats_t *stats,
+                         sockd_stats_dns_operation_t operation,
+                         int result, uint64_t value);
 void sockd_stats_update(sockd_stat_event_t event, uint64_t value);
 void sockd_stats_update_negotiation(sockd_stats_negotiation_t outcome,
                                     uint64_t value);
@@ -4785,6 +4915,25 @@ void sockd_stats_update_request(int command, iostatus_t result,
 void sockd_stats_update_session_started(int protocol, uint64_t value);
 void sockd_stats_update_session_closed(int protocol, iostatus_t status,
                                        uint64_t value);
+void sockd_stats_update_target_connect_attempt(uint64_t value);
+void sockd_stats_update_target_connect_result(int error, uint64_t value);
+void sockd_stats_update_udp_received(sockd_stats_udp_direction_t direction,
+                                     uint64_t value);
+void sockd_stats_update_udp_forwarded(sockd_stats_udp_direction_t direction,
+                                      uint64_t value);
+void sockd_stats_update_udp_receive_error(
+   sockd_stats_udp_direction_t direction, uint64_t value);
+void sockd_stats_update_udp_drop(sockd_stats_udp_direction_t direction,
+                                 sockd_stats_udp_drop_t reason,
+                                 uint64_t value);
+void sockd_stats_update_worker_capacity(int type, uint64_t processes,
+                                        uint64_t slots_total,
+                                        uint64_t slots_free);
+void sockd_stats_update_worker_spawn_failure(int type, uint64_t value);
+void sockd_stats_update_auth(int method, int success, uint64_t value);
+void sockd_stats_update_acl(int command, int permit, uint64_t value);
+void sockd_stats_update_dns(sockd_stats_dns_operation_t operation, int result,
+                            uint64_t value);
 void sockd_stats_update_io(uint64_t client_read, uint64_t client_written,
                            uint64_t target_read, uint64_t target_written);
 void sockd_stats_snapshot(sockd_stats_t *stats);

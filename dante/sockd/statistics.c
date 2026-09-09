@@ -53,8 +53,8 @@ static const char rcsid[] =
 "$Id: statistics.c,v 1.33 2013/10/27 15:24:43 karls Exp $";
 
 #define SOCKD_STATS_REQUEST_MAX (4096)
-#define SOCKD_STATS_BODY_MAX (8192)
-#define SOCKD_STATS_RESPONSE_MAX (16384)
+#define SOCKD_STATS_BODY_MAX (16384)
+#define SOCKD_STATS_RESPONSE_MAX (32768)
 #define SOCKD_STATS_IO_TIMEOUT_SECONDS (1)
 
 static void
@@ -319,6 +319,288 @@ sockd_stats_add_session_closed(sockd_stats_t *stats, const int protocol,
    }
 }
 
+static sockd_stats_connect_t
+normalize_connect_error(const int error)
+{
+   if (error == 0)
+      return SOCKD_STATS_CONNECT_SUCCESS;
+   if (error == ECONNREFUSED)
+      return SOCKD_STATS_CONNECT_REFUSED;
+   if (error == ETIMEDOUT)
+      return SOCKD_STATS_CONNECT_TIMEOUT;
+   if (error == EHOSTUNREACH || error == ENETUNREACH)
+      return SOCKD_STATS_CONNECT_UNREACHABLE;
+   if (error == ECONNRESET || error == ECONNABORTED || error == ENETDOWN)
+      return SOCKD_STATS_CONNECT_NETWORK_ERROR;
+   if (error == EMFILE || error == ENFILE || error == ENOBUFS
+   ||  error == ENOMEM)
+      return SOCKD_STATS_CONNECT_RESOURCE_ERROR;
+
+   return SOCKD_STATS_CONNECT_OTHER;
+}
+
+static sockd_stats_udp_direction_t
+normalize_udp_direction(const sockd_stats_udp_direction_t direction)
+{
+   switch (direction) {
+      case SOCKD_STATS_UDP_CLIENT_TO_TARGET:
+      case SOCKD_STATS_UDP_TARGET_TO_CLIENT:
+      case SOCKD_STATS_UDP_DIRECTION_UNKNOWN:
+         return direction;
+
+      case SOCKD_STATS_UDP_DIRECTION_COUNT:
+         break;
+   }
+
+   return SOCKD_STATS_UDP_DIRECTION_UNKNOWN;
+}
+
+static sockd_stats_udp_drop_t
+normalize_udp_drop(const sockd_stats_udp_drop_t reason)
+{
+   switch (reason) {
+      case SOCKD_STATS_UDP_DROP_BLOCKED:
+      case SOCKD_STATS_UDP_DROP_MALFORMED:
+      case SOCKD_STATS_UDP_DROP_DNS_ERROR:
+      case SOCKD_STATS_UDP_DROP_UNEXPECTED_SOURCE:
+      case SOCKD_STATS_UDP_DROP_SEND_ERROR:
+      case SOCKD_STATS_UDP_DROP_INTERNAL_ERROR:
+      case SOCKD_STATS_UDP_DROP_OTHER:
+         return reason;
+
+      case SOCKD_STATS_UDP_DROP_COUNT:
+         break;
+   }
+
+   return SOCKD_STATS_UDP_DROP_OTHER;
+}
+
+static sockd_stats_worker_type_t
+normalize_worker(const int type)
+{
+   switch (type) {
+      case -PROC_NEGOTIATE:
+      case PROC_NEGOTIATE:
+         return SOCKD_STATS_WORKER_NEGOTIATE;
+      case -PROC_REQUEST:
+      case PROC_REQUEST:
+         return SOCKD_STATS_WORKER_REQUEST;
+      case -PROC_IO:
+      case PROC_IO:
+         return SOCKD_STATS_WORKER_IO;
+   }
+
+   return SOCKD_STATS_WORKER_UNKNOWN;
+}
+
+static sockd_stats_auth_t
+normalize_auth(const int method)
+{
+   switch (method) {
+      case AUTHMETHOD_NONE:
+         return SOCKD_STATS_AUTH_NONE;
+      case AUTHMETHOD_UNAME:
+         return SOCKD_STATS_AUTH_USERNAME;
+      case AUTHMETHOD_GSSAPI:
+         return SOCKD_STATS_AUTH_GSSAPI;
+      case AUTHMETHOD_PAM_ANY:
+      case AUTHMETHOD_PAM_ADDRESS:
+      case AUTHMETHOD_PAM_USERNAME:
+         return SOCKD_STATS_AUTH_PAM;
+      case AUTHMETHOD_BSDAUTH:
+         return SOCKD_STATS_AUTH_BSDAUTH;
+      case AUTHMETHOD_LDAPAUTH:
+         return SOCKD_STATS_AUTH_LDAP;
+      case AUTHMETHOD_RFC931:
+         return SOCKD_STATS_AUTH_RFC931;
+   }
+
+   return SOCKD_STATS_AUTH_UNKNOWN;
+}
+
+static sockd_stats_acl_t
+normalize_acl(const int command)
+{
+   switch (command) {
+      case SOCKS_ACCEPT:
+      case SOCKS_BOUNCETO:
+         return SOCKD_STATS_ACL_CLIENT;
+      case SOCKS_HOSTID:
+         return SOCKD_STATS_ACL_HOSTID;
+      case SOCKS_CONNECT:
+      case SOCKS_BIND:
+      case SOCKS_UDPASSOCIATE:
+      case SOCKS_BINDREPLY:
+      case SOCKS_UDPREPLY:
+         return SOCKD_STATS_ACL_SOCKS;
+   }
+
+   return SOCKD_STATS_ACL_UNKNOWN;
+}
+
+static sockd_stats_dns_operation_t
+normalize_dns_operation(const sockd_stats_dns_operation_t operation)
+{
+   switch (operation) {
+      case SOCKD_STATS_DNS_FORWARD:
+      case SOCKD_STATS_DNS_REVERSE:
+      case SOCKD_STATS_DNS_OPERATION_UNKNOWN:
+         return operation;
+      case SOCKD_STATS_DNS_OPERATION_COUNT:
+         break;
+   }
+
+   return SOCKD_STATS_DNS_OPERATION_UNKNOWN;
+}
+
+static sockd_stats_dns_result_t
+normalize_dns_result(const int result)
+{
+   if (result == 0)
+      return SOCKD_STATS_DNS_SUCCESS;
+#if HAVE_ERR_EAI_NONAME
+   if (result == EAI_NONAME)
+      return SOCKD_STATS_DNS_NOT_FOUND;
+#endif /* HAVE_ERR_EAI_NONAME */
+#if HAVE_ERR_EAI_NODATA
+   if (result == EAI_NODATA)
+      return SOCKD_STATS_DNS_NOT_FOUND;
+#endif /* HAVE_ERR_EAI_NODATA */
+#if HAVE_ERR_EAI_AGAIN
+   if (result == EAI_AGAIN)
+      return SOCKD_STATS_DNS_TEMPORARY;
+#endif /* HAVE_ERR_EAI_AGAIN */
+#if HAVE_ERR_EAI_MEMORY && HAVE_ERR_EAI_SYSTEM
+   if (result == EAI_MEMORY || result == EAI_SYSTEM)
+      return SOCKD_STATS_DNS_SYSTEM_ERROR;
+#elif HAVE_ERR_EAI_MEMORY
+   if (result == EAI_MEMORY)
+      return SOCKD_STATS_DNS_SYSTEM_ERROR;
+#elif HAVE_ERR_EAI_SYSTEM
+   if (result == EAI_SYSTEM)
+      return SOCKD_STATS_DNS_SYSTEM_ERROR;
+#endif
+#if HAVE_ERR_EAI_BADFLAGS
+   if (result == EAI_BADFLAGS)
+      return SOCKD_STATS_DNS_INTERNAL_ERROR;
+#endif /* HAVE_ERR_EAI_BADFLAGS */
+#if HAVE_ERR_EAI_FAMILY
+   if (result == EAI_FAMILY)
+      return SOCKD_STATS_DNS_INTERNAL_ERROR;
+#endif /* HAVE_ERR_EAI_FAMILY */
+#if HAVE_ERR_EAI_SOCKTYPE
+   if (result == EAI_SOCKTYPE)
+      return SOCKD_STATS_DNS_INTERNAL_ERROR;
+#endif /* HAVE_ERR_EAI_SOCKTYPE */
+#if HAVE_ERR_EAI_OVERFLOW
+   if (result == EAI_OVERFLOW)
+      return SOCKD_STATS_DNS_INTERNAL_ERROR;
+#endif /* HAVE_ERR_EAI_OVERFLOW */
+
+   return SOCKD_STATS_DNS_OTHER;
+}
+
+void
+sockd_stats_add_target_connect_attempt(sockd_stats_t *stats,
+                                       const uint64_t value)
+{
+   add_counter(&stats->target_connect_attempts, value);
+}
+
+void
+sockd_stats_add_target_connect_result(sockd_stats_t *stats, const int error,
+                                      const uint64_t value)
+{
+   add_counter(&stats->target_connect_outcome[normalize_connect_error(error)],
+               value);
+}
+
+void
+sockd_stats_add_udp_received(sockd_stats_t *stats,
+                             const sockd_stats_udp_direction_t direction,
+                             const uint64_t value)
+{
+   add_counter(&stats->udp[normalize_udp_direction(direction)].received, value);
+}
+
+void
+sockd_stats_add_udp_forwarded(sockd_stats_t *stats,
+                              const sockd_stats_udp_direction_t direction,
+                              const uint64_t value)
+{
+   add_counter(&stats->udp[normalize_udp_direction(direction)].forwarded,
+               value);
+}
+
+void
+sockd_stats_add_udp_receive_error(sockd_stats_t *stats,
+                                  const sockd_stats_udp_direction_t direction,
+                                  const uint64_t value)
+{
+   add_counter(&stats->udp[normalize_udp_direction(direction)].receive_errors,
+               value);
+}
+
+void
+sockd_stats_add_udp_drop(sockd_stats_t *stats,
+                         const sockd_stats_udp_direction_t direction,
+                         const sockd_stats_udp_drop_t reason,
+                         const uint64_t value)
+{
+   add_counter(&stats->udp[normalize_udp_direction(direction)]
+                           .dropped[normalize_udp_drop(reason)], value);
+}
+
+void
+sockd_stats_set_worker_capacity(sockd_stats_t *stats, const int type,
+                                const uint64_t processes,
+                                const uint64_t slots_total,
+                                const uint64_t slots_free)
+{
+   sockd_stats_worker_t *worker = &stats->workers[normalize_worker(type)];
+
+   worker->processes  = processes;
+   worker->slots_total = slots_total;
+   worker->slots_free = MIN(slots_free, slots_total);
+   worker->slots_busy = slots_total - worker->slots_free;
+}
+
+void
+sockd_stats_add_worker_spawn_failure(sockd_stats_t *stats, const int type,
+                                     const uint64_t value)
+{
+   add_counter(&stats->workers[normalize_worker(type)].spawn_failures, value);
+}
+
+void
+sockd_stats_add_auth(sockd_stats_t *stats, const int method,
+                     const int success, const uint64_t value)
+{
+   const sockd_stats_decision_t decision = success ?
+      SOCKD_STATS_DECISION_SUCCESS : SOCKD_STATS_DECISION_FAILURE;
+
+   add_counter(&stats->auth[normalize_auth(method)][decision], value);
+}
+
+void
+sockd_stats_add_acl(sockd_stats_t *stats, const int command,
+                    const int permit, const uint64_t value)
+{
+   const sockd_stats_decision_t decision = permit ?
+      SOCKD_STATS_DECISION_SUCCESS : SOCKD_STATS_DECISION_FAILURE;
+
+   add_counter(&stats->acl[normalize_acl(command)][decision], value);
+}
+
+void
+sockd_stats_add_dns(sockd_stats_t *stats,
+                    const sockd_stats_dns_operation_t operation,
+                    const int result, const uint64_t value)
+{
+   add_counter(&stats->dns[normalize_dns_operation(operation)]
+                          [normalize_dns_result(result)], value);
+}
+
 #if !SOCKD_STATS_TEST
 void
 sockd_stats_update(const sockd_stat_event_t event, const uint64_t value)
@@ -379,6 +661,130 @@ sockd_stats_update_session_closed(const int protocol,
                                   protocol,
                                   status,
                                   value);
+   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+}
+
+void
+sockd_stats_update_target_connect_attempt(const uint64_t value)
+{
+   if (sockscf.shmeminfo == NULL)
+      return;
+   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_add_target_connect_attempt(&sockscf.shmeminfo->stats, value);
+   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+}
+
+void
+sockd_stats_update_target_connect_result(const int error,
+                                         const uint64_t value)
+{
+   if (sockscf.shmeminfo == NULL)
+      return;
+   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_add_target_connect_result(&sockscf.shmeminfo->stats,
+                                         error, value);
+   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+}
+
+void
+sockd_stats_update_udp_received(const sockd_stats_udp_direction_t direction,
+                                const uint64_t value)
+{
+   if (sockscf.shmeminfo == NULL)
+      return;
+   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_add_udp_received(&sockscf.shmeminfo->stats, direction, value);
+   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+}
+
+void
+sockd_stats_update_udp_forwarded(const sockd_stats_udp_direction_t direction,
+                                 const uint64_t value)
+{
+   if (sockscf.shmeminfo == NULL)
+      return;
+   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_add_udp_forwarded(&sockscf.shmeminfo->stats, direction, value);
+   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+}
+
+void
+sockd_stats_update_udp_receive_error(
+   const sockd_stats_udp_direction_t direction, const uint64_t value)
+{
+   if (sockscf.shmeminfo == NULL)
+      return;
+   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_add_udp_receive_error(&sockscf.shmeminfo->stats,
+                                     direction, value);
+   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+}
+
+void
+sockd_stats_update_udp_drop(const sockd_stats_udp_direction_t direction,
+                            const sockd_stats_udp_drop_t reason,
+                            const uint64_t value)
+{
+   if (sockscf.shmeminfo == NULL)
+      return;
+   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_add_udp_drop(&sockscf.shmeminfo->stats, direction, reason, value);
+   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+}
+
+void
+sockd_stats_update_worker_capacity(const int type, const uint64_t processes,
+                                   const uint64_t slots_total,
+                                   const uint64_t slots_free)
+{
+   if (sockscf.shmeminfo == NULL)
+      return;
+   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_set_worker_capacity(&sockscf.shmeminfo->stats, type,
+                                   processes, slots_total, slots_free);
+   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+}
+
+void
+sockd_stats_update_worker_spawn_failure(const int type, const uint64_t value)
+{
+   if (sockscf.shmeminfo == NULL)
+      return;
+   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_add_worker_spawn_failure(&sockscf.shmeminfo->stats, type, value);
+   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+}
+
+void
+sockd_stats_update_auth(const int method, const int success,
+                        const uint64_t value)
+{
+   if (sockscf.shmeminfo == NULL)
+      return;
+   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_add_auth(&sockscf.shmeminfo->stats, method, success, value);
+   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+}
+
+void
+sockd_stats_update_acl(const int command, const int permit,
+                       const uint64_t value)
+{
+   if (sockscf.shmeminfo == NULL)
+      return;
+   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_add_acl(&sockscf.shmeminfo->stats, command, permit, value);
+   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+}
+
+void
+sockd_stats_update_dns(const sockd_stats_dns_operation_t operation,
+                       const int result, const uint64_t value)
+{
+   if (sockscf.shmeminfo == NULL)
+      return;
+   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_add_dns(&sockscf.shmeminfo->stats, operation, result, value);
    socks_unlock(sockscf.shmemfd, (off_t)0, 1);
 }
 
@@ -486,16 +892,53 @@ sockd_stats_json(const sockd_stats_t *stats, const time_t now,
       "normal", "blocked", "timeout", "network_error", "internal_error",
       "peer_closed", "admin", "other"
    };
+   static const char *const connect_names[] = {
+      "success", "refused", "timeout", "unreachable", "network_error",
+      "resource_error", "other"
+   };
+   static const char *const udp_direction_names[] = {
+      "client_to_target", "target_to_client", "unknown"
+   };
+   static const char *const udp_drop_names[] = {
+      "blocked", "malformed", "dns_error", "unexpected_source",
+      "send_error", "internal_error", "other"
+   };
+   static const char *const worker_names[] = {
+      "negotiate", "request", "io", "unknown"
+   };
+   static const char *const auth_names[] = {
+      "none", "username", "gssapi", "pam", "bsdauth", "ldap", "rfc931",
+      "unknown"
+   };
+   static const char *const acl_names[] = {
+      "client", "hostid", "socks", "unknown"
+   };
+   static const char *const dns_operation_names[] = {
+      "forward", "reverse", "unknown"
+   };
+   static const char *const dns_result_names[] = {
+      "success", "not_found", "temporary", "system_error", "internal_error",
+      "other"
+   };
    const intmax_t uptime = now > stats->started_at ?
                               (intmax_t)(now - stats->started_at) : 0;
    stats_buffer_t output = { response, responsesize, 0, 0 };
-   size_t command, negotiation, protocol, result, reason;
+   size_t acl, auth, command, connect_result, direction, dns_operation,
+          dns_result, drop, negotiation, protocol, result, reason, worker;
 
    SASSERTX(ELEMENTS(negotiation_names) == SOCKD_STATS_NEGOTIATION_COUNT);
    SASSERTX(ELEMENTS(command_names) == SOCKD_STATS_COMMAND_COUNT);
    SASSERTX(ELEMENTS(result_names) == SOCKD_STATS_RESULT_COUNT);
    SASSERTX(ELEMENTS(protocol_names) == SOCKD_STATS_PROTOCOL_COUNT);
    SASSERTX(ELEMENTS(close_names) == SOCKD_STATS_CLOSE_COUNT);
+   SASSERTX(ELEMENTS(connect_names) == SOCKD_STATS_CONNECT_COUNT);
+   SASSERTX(ELEMENTS(udp_direction_names) == SOCKD_STATS_UDP_DIRECTION_COUNT);
+   SASSERTX(ELEMENTS(udp_drop_names) == SOCKD_STATS_UDP_DROP_COUNT);
+   SASSERTX(ELEMENTS(worker_names) == SOCKD_STATS_WORKER_COUNT);
+   SASSERTX(ELEMENTS(auth_names) == SOCKD_STATS_AUTH_COUNT);
+   SASSERTX(ELEMENTS(acl_names) == SOCKD_STATS_ACL_COUNT);
+   SASSERTX(ELEMENTS(dns_operation_names) == SOCKD_STATS_DNS_OPERATION_COUNT);
+   SASSERTX(ELEMENTS(dns_result_names) == SOCKD_STATS_DNS_RESULT_COUNT);
 
    stats_buffer_append(&output,
       "{\"schema_version\":%u,"
@@ -591,6 +1034,109 @@ sockd_stats_json(const sockd_stats_t *stats, const time_t now,
                           reason == 0 ? "" : ",",
                           close_names[reason],
                           stats->session_close_reason[reason]);
+   }
+
+   stats_buffer_append(&output,
+                       "},\"target_connects\":{\"attempts_total\":%"PRIu64,
+                       stats->target_connect_attempts);
+   for (connect_result = 0;
+        connect_result < SOCKD_STATS_CONNECT_COUNT;
+        ++connect_result) {
+      stats_buffer_append(&output,
+                          ",\"%s_total\":%"PRIu64,
+                          connect_names[connect_result],
+                          stats->target_connect_outcome[connect_result]);
+   }
+
+   stats_buffer_append(&output, "},\"udp\":{");
+   for (direction = 0;
+        direction < SOCKD_STATS_UDP_DIRECTION_COUNT;
+        ++direction) {
+      const sockd_stats_udp_t *udp = &stats->udp[direction];
+
+      stats_buffer_append(&output,
+                          "%s\"%s\":{"
+                          "\"received_total\":%"PRIu64","
+                          "\"forwarded_total\":%"PRIu64","
+                          "\"receive_errors_total\":%"PRIu64","
+                          "\"drops\":{",
+                          direction == 0 ? "" : ",",
+                          udp_direction_names[direction],
+                          udp->received,
+                          udp->forwarded,
+                          udp->receive_errors);
+      for (drop = 0; drop < SOCKD_STATS_UDP_DROP_COUNT; ++drop) {
+         stats_buffer_append(&output,
+                             "%s\"%s_total\":%"PRIu64,
+                             drop == 0 ? "" : ",",
+                             udp_drop_names[drop],
+                             udp->dropped[drop]);
+      }
+      stats_buffer_append(&output, "}}");
+   }
+
+   stats_buffer_append(&output, "},\"workers\":{");
+   for (worker = 0; worker < SOCKD_STATS_WORKER_COUNT; ++worker) {
+      const sockd_stats_worker_t *capacity = &stats->workers[worker];
+
+      stats_buffer_append(&output,
+                          "%s\"%s\":{"
+                          "\"processes\":%"PRIu64","
+                          "\"slots_total\":%"PRIu64","
+                          "\"slots_free\":%"PRIu64","
+                          "\"slots_busy\":%"PRIu64","
+                          "\"spawn_failures_total\":%"PRIu64"}",
+                          worker == 0 ? "" : ",",
+                          worker_names[worker],
+                          capacity->processes,
+                          capacity->slots_total,
+                          capacity->slots_free,
+                          capacity->slots_busy,
+                          capacity->spawn_failures);
+   }
+
+   stats_buffer_append(&output, "},\"auth\":{");
+   for (auth = 0; auth < SOCKD_STATS_AUTH_COUNT; ++auth) {
+      stats_buffer_append(&output,
+                          "%s\"%s\":{"
+                          "\"success_total\":%"PRIu64","
+                          "\"failure_total\":%"PRIu64"}",
+                          auth == 0 ? "" : ",",
+                          auth_names[auth],
+                          stats->auth[auth][SOCKD_STATS_DECISION_SUCCESS],
+                          stats->auth[auth][SOCKD_STATS_DECISION_FAILURE]);
+   }
+
+   stats_buffer_append(&output, "},\"acl\":{");
+   for (acl = 0; acl < SOCKD_STATS_ACL_COUNT; ++acl) {
+      stats_buffer_append(&output,
+                          "%s\"%s\":{"
+                          "\"pass_total\":%"PRIu64","
+                          "\"block_total\":%"PRIu64"}",
+                          acl == 0 ? "" : ",",
+                          acl_names[acl],
+                          stats->acl[acl][SOCKD_STATS_DECISION_SUCCESS],
+                          stats->acl[acl][SOCKD_STATS_DECISION_FAILURE]);
+   }
+
+   stats_buffer_append(&output, "},\"dns\":{");
+   for (dns_operation = 0;
+        dns_operation < SOCKD_STATS_DNS_OPERATION_COUNT;
+        ++dns_operation) {
+      stats_buffer_append(&output,
+                          "%s\"%s\":{",
+                          dns_operation == 0 ? "" : ",",
+                          dns_operation_names[dns_operation]);
+      for (dns_result = 0;
+           dns_result < SOCKD_STATS_DNS_RESULT_COUNT;
+           ++dns_result) {
+         stats_buffer_append(&output,
+                             "%s\"%s_total\":%"PRIu64,
+                             dns_result == 0 ? "" : ",",
+                             dns_result_names[dns_result],
+                             stats->dns[dns_operation][dns_result]);
+      }
+      stats_buffer_append(&output, "}");
    }
 
    stats_buffer_append(&output, "}}}\n");

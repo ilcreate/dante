@@ -33,7 +33,7 @@
  *  Software Distribution Coordinator  or  sdc@inet.no
  *  Inferno Nettverk A/S
  *  Oslo Research Park
- *  Gaustadalléen 21
+ *  GaustadallÃ©en 21
  *  NO-0349 Oslo
  *  Norway
  *
@@ -425,6 +425,14 @@ cgetaddrinfo(name, service, hints, res, resmem)
       }
    }
 
+#if SOCKS_SERVER
+   {
+      const int resolver_errno = errno;
+      sockd_stats_update_dns(SOCKD_STATS_DNS_FORWARD, gai_rc, 1);
+      errno = resolver_errno;
+   }
+#endif /* SOCKS_SERVER */
+
 #if HAVE_LINUX_BUGS
    /*
     * glibc calls connect(2) to something that fails from __GI_getaddrinfo(),
@@ -732,6 +740,14 @@ do {                                                                           \
          }
       }
    }
+
+#if SOCKS_SERVER
+   {
+      const int resolver_errno = errno;
+      sockd_stats_update_dns(SOCKD_STATS_DNS_REVERSE, gai_rc, 1);
+      errno = resolver_errno;
+   }
+#endif /* SOCKS_SERVER */
 
    if (gai_rc != 0) {
       if (have_oldres) {

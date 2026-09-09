@@ -33,7 +33,7 @@
  *  Software Distribution Coordinator  or  sdc@inet.no
  *  Inferno Nettverk A/S
  *  Oslo Research Park
- *  Gaustadalléen 21
+ *  GaustadallÃ©en 21
  *  NO-0349 Oslo
  *  Norway
  *
@@ -496,6 +496,8 @@ accesscheck(s, auth, src, dst, emsg, emsgsize)
       default:
          SERRX(auth->method);
    }
+
+   sockd_stats_update_auth(auth->method, match, 1);
 
    /*
     * Some methods can be called with different values for the

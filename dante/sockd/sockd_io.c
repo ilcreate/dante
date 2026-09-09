@@ -3304,6 +3304,7 @@ connectstatus(io, badfd)
            function, sockshost2string(&io->dst.host, NULL, 0), io->dst.s);
 
       io->dst.state.isconnected = 1;
+      sockd_stats_update_target_connect_result(0, 1);
 
 #if HAVE_NEGOTIATE_PHASE
       if (SOCKS_SERVER || io->reqflags.httpconnect) {
@@ -3420,6 +3421,8 @@ connectstatus(io, badfd)
    }
    else
       io->dst.state.err = errno;
+
+   sockd_stats_update_target_connect_result(io->dst.state.err, 1);
 
    slog(LOG_DEBUG,
         "%s: connect(2) to %s on fd %d, on behalf of client %s, failed: %s",
@@ -3605,6 +3608,11 @@ io_delete(mother, io, badfd, status)
            || badfd == io->dst.s);
 
    SASSERTX(io->allocated);
+
+   if (io_connectisinprogress(io))
+      sockd_stats_update_target_connect_result(status == IO_TIMEOUT ?
+                                                ETIMEDOUT : ECONNABORTED,
+                                                1);
 
    sockd_stats_update_session_closed(io->state.protocol, status, 1);
 

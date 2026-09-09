@@ -425,32 +425,45 @@ typedef struct {
    int    failed;
 } stats_buffer_t;
 
-#define STATS_BUFFER_APPEND(buffer, ...)                                      \
-do {                                                                           \
-   stats_buffer_t *const _stats_output = (buffer);                             \
-   if (!_stats_output->failed) {                                               \
-      if (_stats_output->used >= _stats_output->size) {                        \
-         _stats_output->failed = 1;                                            \
-         errno = ENOSPC;                                                       \
-      }                                                                        \
-      else {                                                                   \
-         const size_t _stats_available                                         \
-         = _stats_output->size - _stats_output->used;                          \
-         const int _stats_length                                               \
-         = snprintf(_stats_output->data + _stats_output->used,                 \
-                    _stats_available, __VA_ARGS__);                            \
-                                                                               \
-         if (_stats_length < 0)                                                \
-            _stats_output->failed = 1;                                         \
-         else if ((size_t)_stats_length >= _stats_available) {                 \
-            _stats_output->failed = 1;                                         \
-            errno = ENOSPC;                                                    \
-         }                                                                     \
-         else                                                                  \
-            _stats_output->used += (size_t)_stats_length;                      \
-      }                                                                        \
-   }                                                                           \
-} while (/* CONSTCOND */ 0)
+static void stats_buffer_append(stats_buffer_t *buffer, const char *format, ...)
+   __ATTRIBUTE__((FORMAT(printf, 2, 3)));
+
+static void
+stats_buffer_append(stats_buffer_t *buffer, const char *format, ...)
+{
+   va_list ap;
+   size_t available;
+   int length;
+
+   if (buffer->failed)
+      return;
+
+   if (buffer->used >= buffer->size) {
+      buffer->failed = 1;
+      errno = ENOSPC;
+      return;
+   }
+
+   available = buffer->size - buffer->used;
+   va_start(ap, format);
+   length = vsnprintf(buffer->data + buffer->used, available, format, ap);
+   va_end(ap);
+
+   if (length < 0) {
+      buffer->failed = 1;
+      if (errno == 0)
+         errno = EINVAL;
+      return;
+   }
+
+   if ((size_t)length >= available) {
+      buffer->failed = 1;
+      errno = ENOSPC;
+      return;
+   }
+
+   buffer->used += (size_t)length;
+}
 
 ssize_t
 sockd_stats_json(const sockd_stats_t *stats, const time_t now,
@@ -484,7 +497,7 @@ sockd_stats_json(const sockd_stats_t *stats, const time_t now,
    SASSERTX(ELEMENTS(protocol_names) == SOCKD_STATS_PROTOCOL_COUNT);
    SASSERTX(ELEMENTS(close_names) == SOCKD_STATS_CLOSE_COUNT);
 
-   STATS_BUFFER_APPEND(&output,
+   stats_buffer_append(&output,
       "{\"schema_version\":%u,"
       "\"schema_revision\":%u,"
       "\"server_version\":\"%s\","
@@ -528,36 +541,36 @@ sockd_stats_json(const sockd_stats_t *stats, const time_t now,
    for (negotiation = 0;
         negotiation < SOCKD_STATS_NEGOTIATION_COUNT;
         ++negotiation) {
-      STATS_BUFFER_APPEND(&output,
+      stats_buffer_append(&output,
                           "%s\"%s_total\":%"PRIu64,
                           negotiation == 0 ? "" : ",",
                           negotiation_names[negotiation],
                           stats->negotiation_outcome[negotiation]);
    }
 
-   STATS_BUFFER_APPEND(&output, "},\"requests\":{");
+   stats_buffer_append(&output, "},\"requests\":{");
    for (command = 0; command < SOCKD_STATS_COMMAND_COUNT; ++command) {
-      STATS_BUFFER_APPEND(&output,
+      stats_buffer_append(&output,
                           "%s\"%s\":{",
                           command == 0 ? "" : ",",
                           command_names[command]);
 
       for (result = 0; result < SOCKD_STATS_RESULT_COUNT; ++result) {
-         STATS_BUFFER_APPEND(&output,
+         stats_buffer_append(&output,
                              "%s\"%s_total\":%"PRIu64,
                              result == 0 ? "" : ",",
                              result_names[result],
                              stats->request_outcome[command][result]);
       }
 
-      STATS_BUFFER_APPEND(&output, "}");
+      stats_buffer_append(&output, "}");
    }
 
-   STATS_BUFFER_APPEND(&output, "},\"sessions\":{");
+   stats_buffer_append(&output, "},\"sessions\":{");
    for (protocol = 0; protocol < SOCKD_STATS_PROTOCOL_COUNT; ++protocol) {
       const sockd_stats_session_t *session = &stats->sessions[protocol];
 
-      STATS_BUFFER_APPEND(&output,
+      stats_buffer_append(&output,
                           "%s\"%s\":{"
                           "\"started_total\":%"PRIu64","
                           "\"active\":%"PRIu64","
@@ -571,16 +584,16 @@ sockd_stats_json(const sockd_stats_t *stats, const time_t now,
                           session->errors);
    }
 
-   STATS_BUFFER_APPEND(&output, "},\"session_closures\":{");
+   stats_buffer_append(&output, "},\"session_closures\":{");
    for (reason = 0; reason < SOCKD_STATS_CLOSE_COUNT; ++reason) {
-      STATS_BUFFER_APPEND(&output,
+      stats_buffer_append(&output,
                           "%s\"%s_total\":%"PRIu64,
                           reason == 0 ? "" : ",",
                           close_names[reason],
                           stats->session_close_reason[reason]);
    }
 
-   STATS_BUFFER_APPEND(&output, "}}}\n");
+   stats_buffer_append(&output, "}}}\n");
 
    if (output.failed)
       return -1;

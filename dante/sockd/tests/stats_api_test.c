@@ -77,13 +77,15 @@ test_detailed_negotiation_updates(void)
    sockd_stats_add_negotiation(&stats, SOCKD_STATS_NEGOTIATION_TIMEOUT, 5);
    sockd_stats_add_negotiation(&stats,
                                (sockd_stats_negotiation_t)UINT_MAX, 6);
+   sockd_stats_add_negotiation(&stats, SOCKD_STATS_NEGOTIATION_UNKNOWN, 1);
+   sockd_stats_add_negotiation(&stats, SOCKD_STATS_NEGOTIATION_COUNT, 1);
 
    TEST_CHECK(stats.negotiation_outcome[SOCKD_STATS_NEGOTIATION_SUCCESS] == 2);
    TEST_CHECK(stats.negotiation_outcome[SOCKD_STATS_NEGOTIATION_EOF] == 3);
    TEST_CHECK(stats.negotiation_outcome[SOCKD_STATS_NEGOTIATION_ERROR] == 4);
    TEST_CHECK(stats.negotiation_outcome[SOCKD_STATS_NEGOTIATION_TIMEOUT] == 5);
-   TEST_CHECK(stats.negotiation_outcome[SOCKD_STATS_NEGOTIATION_UNKNOWN] == 6);
-   TEST_CHECK(stats.negotiation_failures == 18);
+   TEST_CHECK(stats.negotiation_outcome[SOCKD_STATS_NEGOTIATION_UNKNOWN] == 8);
+   TEST_CHECK(stats.negotiation_failures == 20);
 
    stats.negotiation_outcome[SOCKD_STATS_NEGOTIATION_SUCCESS] = UINT64_MAX - 1;
    sockd_stats_add_negotiation(&stats, SOCKD_STATS_NEGOTIATION_SUCCESS, 5);
@@ -114,6 +116,54 @@ test_detailed_request_updates(void)
    TEST_CHECK(stats.request_outcome[SOCKD_STATS_COMMAND_UNKNOWN]
                                     [SOCKD_STATS_RESULT_OTHER] == 6);
    TEST_CHECK(stats.request_failures == 18);
+}
+
+static void
+test_request_status_taxonomy(void)
+{
+   static const struct {
+      iostatus_t result;
+      sockd_stats_result_t expected;
+   } cases[] = {
+      { IO_NOERROR,          SOCKD_STATS_RESULT_SUCCESS },
+      { IO_TMPERROR,         SOCKD_STATS_RESULT_OTHER },
+      { IO_IOERROR,          SOCKD_STATS_RESULT_NETWORK_ERROR },
+      { IO_ERROR,            SOCKD_STATS_RESULT_INTERNAL_ERROR },
+      { IO_EAGAIN,           SOCKD_STATS_RESULT_OTHER },
+      { IO_TIMEOUT,          SOCKD_STATS_RESULT_TIMEOUT },
+      { IO_CLOSE,            SOCKD_STATS_RESULT_CLOSED },
+      { IO_BLOCK,            SOCKD_STATS_RESULT_BLOCKED },
+      { IO_TMPBLOCK,         SOCKD_STATS_RESULT_BLOCKED },
+      { IO_ADMINTERMINATION, SOCKD_STATS_RESULT_ADMIN },
+      { (iostatus_t)INT_MAX, SOCKD_STATS_RESULT_OTHER }
+   };
+   sockd_stats_t stats;
+   size_t i;
+
+   sockd_stats_init(&stats, (time_t)100);
+   for (i = 0; i < ELEMENTS(cases); ++i) {
+      sockd_stats_add_request(&stats, SOCKS_CONNECT, cases[i].result, 1);
+      TEST_CHECK(stats.request_outcome[SOCKD_STATS_COMMAND_CONNECT]
+                                       [cases[i].expected] != 0);
+   }
+
+   TEST_CHECK(stats.request_outcome[SOCKD_STATS_COMMAND_CONNECT]
+                                    [SOCKD_STATS_RESULT_SUCCESS] == 1);
+   TEST_CHECK(stats.request_outcome[SOCKD_STATS_COMMAND_CONNECT]
+                                    [SOCKD_STATS_RESULT_BLOCKED] == 2);
+   TEST_CHECK(stats.request_outcome[SOCKD_STATS_COMMAND_CONNECT]
+                                    [SOCKD_STATS_RESULT_TIMEOUT] == 1);
+   TEST_CHECK(stats.request_outcome[SOCKD_STATS_COMMAND_CONNECT]
+                                    [SOCKD_STATS_RESULT_NETWORK_ERROR] == 1);
+   TEST_CHECK(stats.request_outcome[SOCKD_STATS_COMMAND_CONNECT]
+                                    [SOCKD_STATS_RESULT_INTERNAL_ERROR] == 1);
+   TEST_CHECK(stats.request_outcome[SOCKD_STATS_COMMAND_CONNECT]
+                                    [SOCKD_STATS_RESULT_CLOSED] == 1);
+   TEST_CHECK(stats.request_outcome[SOCKD_STATS_COMMAND_CONNECT]
+                                    [SOCKD_STATS_RESULT_ADMIN] == 1);
+   TEST_CHECK(stats.request_outcome[SOCKD_STATS_COMMAND_CONNECT]
+                                    [SOCKD_STATS_RESULT_OTHER] == 3);
+   TEST_CHECK(stats.request_failures == ELEMENTS(cases) - 1);
 }
 
 static void
@@ -160,9 +210,51 @@ test_detailed_session_updates(void)
 }
 
 static void
+test_session_close_taxonomy(void)
+{
+   static const iostatus_t cases[] = {
+      IO_NOERROR,
+      IO_TMPERROR,
+      IO_IOERROR,
+      IO_ERROR,
+      IO_EAGAIN,
+      IO_TIMEOUT,
+      IO_CLOSE,
+      IO_BLOCK,
+      IO_TMPBLOCK,
+      IO_ADMINTERMINATION,
+      (iostatus_t)INT_MAX
+   };
+   sockd_stats_t stats;
+   size_t i;
+
+   sockd_stats_init(&stats, (time_t)100);
+   sockd_stats_add_session_started(&stats, SOCKS_TCP, 1);
+   for (i = 0; i < ELEMENTS(cases); ++i)
+      sockd_stats_add_session_closed(&stats, SOCKS_TCP, cases[i], 1);
+
+   TEST_CHECK(stats.session_close_reason[SOCKD_STATS_CLOSE_NORMAL] == 1);
+   TEST_CHECK(stats.session_close_reason[SOCKD_STATS_CLOSE_BLOCKED] == 2);
+   TEST_CHECK(stats.session_close_reason[SOCKD_STATS_CLOSE_TIMEOUT] == 1);
+   TEST_CHECK(stats.session_close_reason[SOCKD_STATS_CLOSE_NETWORK_ERROR]
+         == 1);
+   TEST_CHECK(stats.session_close_reason[SOCKD_STATS_CLOSE_INTERNAL_ERROR]
+         == 1);
+   TEST_CHECK(stats.session_close_reason[SOCKD_STATS_CLOSE_PEER] == 1);
+   TEST_CHECK(stats.session_close_reason[SOCKD_STATS_CLOSE_ADMIN] == 1);
+   TEST_CHECK(stats.session_close_reason[SOCKD_STATS_CLOSE_OTHER] == 3);
+   TEST_CHECK(stats.sessions[SOCKD_STATS_PROTOCOL_TCP].active == 0);
+   TEST_CHECK(stats.sessions[SOCKD_STATS_PROTOCOL_TCP].closed
+         == ELEMENTS(cases));
+   TEST_CHECK(stats.sessions[SOCKD_STATS_PROTOCOL_TCP].errors == 3);
+   TEST_CHECK(stats.session_errors == 3);
+}
+
+static void
 test_json_snapshot(void)
 {
    sockd_stats_t stats;
+   char exact[8192];
    char json[8192];
    ssize_t length;
 
@@ -203,12 +295,23 @@ test_json_snapshot(void)
    TEST_CHECK(strstr(json, "\"session_closures\":{") != NULL);
    TEST_CHECK(strstr(json, "\"peer_closed_total\":1") != NULL);
 
+   TEST_CHECK(sockd_stats_json(&stats, (time_t)130,
+                               exact, (size_t)length + 1) == length);
+   errno = 0;
+   TEST_CHECK(sockd_stats_json(&stats, (time_t)130,
+                               exact, (size_t)length) == -1);
+   TEST_CHECK(errno == ENOSPC);
+
    length = sockd_stats_json(&stats, (time_t)90, json, sizeof(json));
    TEST_CHECK(length > 0);
    TEST_CHECK(strstr(json, "\"uptime_seconds\":0") != NULL);
 
    errno = 0;
    TEST_CHECK(sockd_stats_json(&stats, (time_t)130, json, 8) == -1);
+   TEST_CHECK(errno == ENOSPC);
+
+   errno = 0;
+   TEST_CHECK(sockd_stats_json(&stats, (time_t)130, json, 0) == -1);
    TEST_CHECK(errno == ENOSPC);
 }
 
@@ -408,7 +511,9 @@ main(void)
    test_counter_updates();
    test_detailed_negotiation_updates();
    test_detailed_request_updates();
+   test_request_status_taxonomy();
    test_detailed_session_updates();
+   test_session_close_taxonomy();
    test_json_snapshot();
    test_http_contract();
    test_unix_socket_validation();

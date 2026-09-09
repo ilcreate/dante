@@ -129,14 +129,24 @@ the monitor process serves HTTP/1.0 and HTTP/1.1 requests over a Unix
 domain stream socket.  The versioned endpoint
 .B GET /v1/stats
 returns a JSON snapshot containing server and schema versions, timestamps,
-uptime, process-shared counters, and gauges.  The connection is closed after
-each response.  Other paths return 404 and methods other than GET return 405.
+uptime, process-shared counters, and gauges.  The current response uses schema
+version 1, revision 2.  The connection is closed after each response.  Other
+paths return 404 and methods other than GET return 405.
 .PP
 The counters cover accepted and pre-negotiation dropped clients, negotiation
-and request failures, established and closed sessions, session errors, and
-bytes read and written on the client and target sides.  The active sessions
-value is a gauge.  Counters remain available across worker rotation and
-configuration reload, but reset when the server is restarted.
+and request failures, admitted and closed sessions, session errors, and bytes
+read and written on the client and target sides.  Revision 2 also reports
+negotiation outcomes, request outcomes by SOCKS command, session lifecycle by
+protocol, and normalized session close reasons.  These detail dimensions are
+fixed and include unknown/other buckets.  The active session values are
+gauges.  Counters remain available across worker rotation and configuration
+reload, but reset when the server is restarted.
+.PP
+The compatibility field
+.B sessions_established_total
+is incremented when an I/O worker admits a session; it does not guarantee that
+a remote TCP connection has completed.  The API reports socket payload bytes,
+not link-layer or IP wire bytes.
 .SH SIGNALS
 .TP
 .B SIGHUP

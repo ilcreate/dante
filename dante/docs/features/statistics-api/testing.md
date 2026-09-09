@@ -1,4 +1,4 @@
-Last verified against implementation commit: 11448e34dc558a425748f56c832c366baa5051c2
+Last verified against implementation commit: 35a8cd4
 
 # Statistics API testing
 
@@ -56,8 +56,8 @@ all stats API tests passed
 
 ## Automated coverage
 
-The revision 2 implementation was last measured at 90.55% line coverage,
-74.57% region coverage, 96.00% function coverage, and 80.15% branch coverage
+The revision 3 implementation was last measured at 94.18% line coverage,
+73.61% region coverage, 97.73% function coverage, and 83.90% branch coverage
 for `sockd/statistics.c`. The lower region percentage includes production-only
 shared-memory wrappers and system-error branches excluded from the standalone
 test build.
@@ -74,18 +74,18 @@ cc \
   -Iinclude -Ilib -Ilibscompat \
   -fprofile-instr-generate -fcoverage-mapping \
   sockd/tests/stats_api_test.c sockd/statistics.c \
-  -o /tmp/dante-stats-api-final.coverage.bin
+  -o /tmp/dante-stats-api-r3.coverage.bin
 
-LLVM_PROFILE_FILE=/tmp/dante-stats-api-final.profraw \
-  /tmp/dante-stats-api-final.coverage.bin
+LLVM_PROFILE_FILE=/tmp/dante-stats-api-r3.profraw \
+  /tmp/dante-stats-api-r3.coverage.bin
 
 xcrun llvm-profdata merge -sparse \
-  /tmp/dante-stats-api-final.profraw \
-  -o /tmp/dante-stats-api-final.profdata
+  /tmp/dante-stats-api-r3.profraw \
+  -o /tmp/dante-stats-api-r3.profdata
 
 xcrun llvm-cov report \
-  /tmp/dante-stats-api-final.coverage.bin \
-  -instr-profile=/tmp/dante-stats-api-final.profdata \
+  /tmp/dante-stats-api-r3.coverage.bin \
+  -instr-profile=/tmp/dante-stats-api-r3.profdata \
   sockd/statistics.c
 ```
 
@@ -115,7 +115,7 @@ cc -std=c17 \
 The repository still reports pre-existing diagnostics for legacy K&R
 prototype/unused parameters in `sockd_check_ipclatency`, invalid UTF-8 in old
 header comments, and configuration macros omitted from this standalone command
-under `-Wundef`. Revision 2 adds no new diagnostic in this check.
+under `-Wundef`. Revision 3 adds no new diagnostic in this check.
 
 ## Test inventory
 
@@ -128,9 +128,13 @@ under `-Wundef`. Revision 2 adds no new diagnostic in this check.
 | Negotiation taxonomy | Success, EOF, error, timeout, and unknown normalization; compatible failure aggregate |
 | Request taxonomy | All command/result buckets, unknown normalization, and compatible failure aggregate |
 | Session taxonomy | TCP/UDP/unknown start and close values, all close reasons, and legacy error definition |
+| Target-connect taxonomy | Attempts, every normalized `errno` class, pending-compatible outcomes, saturation |
+| UDP taxonomy | Both directions, receive/forward/error counters, every drop reason, unknown normalization |
+| Worker capacity | Process/slot gauges, free-to-total clamping, busy derivation, signed process types, spawn failures |
+| Auth/ACL/DNS | Every bounded method/phase/operation/result family and fallback bucket |
 | Gauge safety | Closing more sessions than active clamps the gauge at zero |
 | Counter safety | Addition saturates at `UINT64_MAX` |
-| JSON | Metadata, revision 2 details, representative matrices, string length, clock rollback behavior |
+| JSON | Metadata, revision 3 details, representative matrices, string length, clock rollback behavior |
 | Buffer bounds | Exact-fit-minus-NUL, zero-size, and small JSON/HTTP buffers return `ENOSPC` |
 | HTTP success | `GET /v1/stats`, response headers, and JSON body |
 | HTTP errors | 400 malformed/incomplete/version, 404 path, 405 method |
@@ -162,7 +166,7 @@ curl --silent --show-error \
 
 Expected observations:
 
-- HTTP client receives schema version 1, revision 2 JSON;
+- HTTP client receives schema version 1, revision 3 JSON;
 - repeated requests receive independent responses;
 - `started_at` stays constant while `snapshot_time` and uptime advance;
 - a TCP connection to the configured SOCKS listener increments
@@ -193,13 +197,13 @@ handled by either mother contributes to the same returned counters.
 
 These are requirements for a future exporter and are not current tests:
 
-- schema version 1 is accepted, detailed metrics require revision 2, and
-  unknown versions fail explicitly;
+- schema version 1 is accepted, lifecycle details require revision 2,
+  operational details require revision 3, and unknown versions fail explicitly;
 - every aggregate and detailed JSON counter maps to a Prometheus
   `Counter`-compatible sample without exporter-side accumulation;
 - global and per-protocol active sessions map to gauges;
-- all fixed command/result/protocol/reason combinations are exported at zero
-  when absent, without discovering labels dynamically;
+- all 157 fixed detailed numeric series are exported at zero when absent,
+  without discovering labels dynamically;
 - server restart is observed as a counter reset and changed `started_at`;
 - timeouts, connection refusal, malformed JSON, non-200 responses, short reads,
   and content-length mismatches make the scrape fail without stale success;
@@ -213,6 +217,8 @@ These are requirements for a future exporter and are not current tests:
 - accepted descriptors above `FD_SETSIZE` and the fixed stack `fd_set` path;
 - API connection flooding and repeated one-second slow-client waits;
 - shared-lock contention under high TCP/UDP packet rates;
+- abnormal target-connect worker death leaving attempts without outcomes;
+- timing lag between worker slot changes and the next capacity scan;
 - peer UID validation;
 - socket path replacement races between `lstat()`, `bind()`, `chmod()`, and
   `unlink()`;

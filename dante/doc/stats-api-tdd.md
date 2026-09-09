@@ -1,6 +1,8 @@
 Last verified against commit: 5433322b4c52367df1a0cdc3f7d4c3e6f6236767
 Latest v1 revision 2 cycle verified against commit:
 11448e34dc558a425748f56c832c366baa5051c2
+Latest v1 revision 3 cycle verified against commit:
+35a8cd405789be5bedcd870ca52f2a9a6528500b
 
 # Statistics API TDD evidence
 
@@ -119,3 +121,50 @@ The tests now cover aggregate compatibility, every bounded taxonomy,
 saturation, gauge underflow protection, unknown-value normalization, JSON
 revision/details, exact buffer boundaries, HTTP status behavior, real Unix
 socket serving, permissions, delayed delivery, and cleanup.
+
+## Version 1 revision 3 operational extension
+
+### Scope
+
+This cycle added true target-connect outcomes, directional UDP datagrams and
+drops, worker capacity, authentication outcomes, ACL decisions, and DNS
+backend-query outcomes. All keys and labels are compile-time bounded; no
+identity, address, rule, PID, raw `errno`, or free-form error becomes a metric
+dimension. Revision 1 and 2 JSON paths remain unchanged.
+
+### RED evidence
+
+The test-only checkpoint is commit
+`8e397f4b7f4d68e8dbb4941e75efe8a2fc427fb2`. The feature runner failed to
+compile because the revision 3 structures, enums, mutation functions, and JSON
+fields did not exist. This was the intended missing-contract failure.
+
+### GREEN evidence
+
+The implementation checkpoint is commit
+`0bbec19d371054d87ce3aef2481b41e1c65eb10f`. It added the shared representation,
+bounded normalizers, producer hooks, and revision 3 serialization. The feature
+runner and full `make -j2` build passed.
+
+### Refactor evidence
+
+The refactor checkpoint is commit
+`35a8cd405789be5bedcd870ca52f2a9a6528500b`. It expanded taxonomy branch tests,
+made all shared statistics wrappers preserve caller `errno`, classified
+post-`sendto()` UDP forwarding failures, and prevented a failed proxy-chain
+connect with a zero `errno` from being counted as success.
+
+| Check | Result |
+|---|---|
+| Feature unit and Unix-socket integration runner | Passed |
+| Full server-only build (`make -j2`) | Passed; only existing legacy C/GSSAPI warnings |
+| Strict C17 compile and test run | Passed; only pre-existing repository diagnostics |
+| `sockd/statistics.c` line coverage | 94.18% |
+| Function coverage | 97.73% |
+| Branch coverage | 83.90% |
+| Region coverage | 73.61%; production-only shared wrappers remain excluded from the standalone build |
+
+The revision 3 contract contains 100 new fixed numeric series and 157 detailed
+series in total. Target attempts may temporarily exceed outcomes while a
+nonblocking connect is pending. UDP receive errors count failed receive calls,
+worker capacity is a scan-time snapshot, and resolver cache hits are excluded.

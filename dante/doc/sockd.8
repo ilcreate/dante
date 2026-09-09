@@ -130,17 +130,19 @@ domain stream socket.  The versioned endpoint
 .B GET /v1/stats
 returns a JSON snapshot containing server and schema versions, timestamps,
 uptime, process-shared counters, and gauges.  The current response uses schema
-version 1, revision 2.  The connection is closed after each response.  Other
+version 1, revision 3.  The connection is closed after each response.  Other
 paths return 404 and methods other than GET return 405.
 .PP
 The counters cover accepted and pre-negotiation dropped clients, negotiation
 and request failures, admitted and closed sessions, session errors, and bytes
 read and written on the client and target sides.  Revision 2 also reports
 negotiation outcomes, request outcomes by SOCKS command, session lifecycle by
-protocol, and normalized session close reasons.  These detail dimensions are
-fixed and include unknown/other buckets.  The active session values are
-gauges.  Counters remain available across worker rotation and configuration
-reload, but reset when the server is restarted.
+protocol, and normalized session close reasons.  Revision 3 adds target
+connection outcomes, UDP datagrams/errors/drops, worker capacity, executed
+authentication results, ACL decisions, and DNS backend-query results.  These
+dimensions are fixed and include unknown/other buckets.  Active sessions and
+worker capacity are gauges.  Counters remain available across worker rotation
+and configuration reload, but reset when the server is restarted.
 .PP
 The compatibility field
 .B sessions_established_total

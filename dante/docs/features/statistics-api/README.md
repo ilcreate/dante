@@ -1,4 +1,4 @@
-Last verified against implementation commit: 11448e34dc558a425748f56c832c366baa5051c2
+Last verified against implementation commit: 35a8cd4
 
 # Dante statistics API
 
@@ -51,20 +51,20 @@ One request is served per connection. The implementation reads at most 4096
 bytes once and requires the request line to fit within 511 bytes. It waits up
 to one second for the first readable data.
 
-## JSON schema version 1, revision 2
+## JSON schema version 1, revision 3
 
-Revision 2 is an additive extension of version 1. It preserves every original
-counter and gauge, adds `schema_revision`, and adds a fixed-cardinality
-`details` object. Existing consumers can keep reading the original paths and
-ignore unknown members. Consumers that require the new families should check
-both `schema_version == 1` and `schema_revision >= 2`.
+Revision 3 additively extends revision 2. It preserves every existing path and
+adds fixed-cardinality target-connect, UDP, worker, authentication, ACL, and
+DNS objects. Existing consumers can ignore unknown members. Consumers should
+check `schema_version == 1` and require revision 2 or 3 according to the
+families they consume.
 
 A successful response has this shape:
 
 ```json
 {
   "schema_version": 1,
-  "schema_revision": 2,
+  "schema_revision": 3,
   "server_version": "1.4.4",
   "snapshot_time": 1788897413,
   "started_at": 1788897390,
@@ -138,6 +138,75 @@ A successful response has this shape:
       "peer_closed_total": 3,
       "admin_total": 0,
       "other_total": 0
+    },
+    "target_connects": {
+      "attempts_total": 10,
+      "success_total": 8,
+      "refused_total": 1,
+      "timeout_total": 0,
+      "unreachable_total": 1,
+      "network_error_total": 0,
+      "resource_error_total": 0,
+      "other_total": 0
+    },
+    "udp": {
+      "client_to_target": {
+        "received_total": 7, "forwarded_total": 6,
+        "receive_errors_total": 0,
+        "drops": {
+          "blocked_total": 1, "malformed_total": 0,
+          "dns_error_total": 0, "unexpected_source_total": 0,
+          "send_error_total": 0, "internal_error_total": 0,
+          "other_total": 0
+        }
+      },
+      "target_to_client": {
+        "received_total": 6, "forwarded_total": 6,
+        "receive_errors_total": 0,
+        "drops": {
+          "blocked_total": 0, "malformed_total": 0,
+          "dns_error_total": 0, "unexpected_source_total": 0,
+          "send_error_total": 0, "internal_error_total": 0,
+          "other_total": 0
+        }
+      },
+      "unknown": {
+        "received_total": 0, "forwarded_total": 0,
+        "receive_errors_total": 0,
+        "drops": {
+          "blocked_total": 0, "malformed_total": 0,
+          "dns_error_total": 0, "unexpected_source_total": 0,
+          "send_error_total": 0, "internal_error_total": 0,
+          "other_total": 0
+        }
+      }
+    },
+    "workers": {
+      "negotiate": {"processes": 1, "slots_total": 64, "slots_free": 63, "slots_busy": 1, "spawn_failures_total": 0},
+      "request": {"processes": 1, "slots_total": 64, "slots_free": 64, "slots_busy": 0, "spawn_failures_total": 0},
+      "io": {"processes": 1, "slots_total": 64, "slots_free": 62, "slots_busy": 2, "spawn_failures_total": 0},
+      "unknown": {"processes": 0, "slots_total": 0, "slots_free": 0, "slots_busy": 0, "spawn_failures_total": 0}
+    },
+    "auth": {
+      "none": {"success_total": 12, "failure_total": 0},
+      "username": {"success_total": 0, "failure_total": 0},
+      "gssapi": {"success_total": 0, "failure_total": 0},
+      "pam": {"success_total": 0, "failure_total": 0},
+      "bsdauth": {"success_total": 0, "failure_total": 0},
+      "ldap": {"success_total": 0, "failure_total": 0},
+      "rfc931": {"success_total": 0, "failure_total": 0},
+      "unknown": {"success_total": 0, "failure_total": 0}
+    },
+    "acl": {
+      "client": {"pass_total": 16, "block_total": 0},
+      "hostid": {"pass_total": 0, "block_total": 0},
+      "socks": {"pass_total": 18, "block_total": 2},
+      "unknown": {"pass_total": 0, "block_total": 0}
+    },
+    "dns": {
+      "forward": {"success_total": 3, "not_found_total": 0, "temporary_total": 0, "system_error_total": 0, "internal_error_total": 0, "other_total": 0},
+      "reverse": {"success_total": 2, "not_found_total": 0, "temporary_total": 0, "system_error_total": 0, "internal_error_total": 0, "other_total": 0},
+      "unknown": {"success_total": 0, "not_found_total": 0, "temporary_total": 0, "system_error_total": 0, "internal_error_total": 0, "other_total": 0}
     }
   }
 }
@@ -185,6 +254,11 @@ Revision 2 exposes 57 fixed detailed numeric series:
   `unknown`;
 - eight normalized session close reasons.
 
+Revision 3 adds 100 fixed series: target-connect attempts/results, UDP
+datagrams/errors/drops by direction, worker capacity and spawn failures,
+authentication outcomes, ACL decisions, and DNS backend-query outcomes. The
+complete semantics and exporter mappings are in [`metrics.md`](metrics.md).
+
 Unknown internal values are normalized into bounded `unknown` or `other`
 buckets. The full field semantics and exporter mapping are defined in
 [`metrics.md`](metrics.md).
@@ -208,8 +282,9 @@ The exporter should:
 1. connect to the configured Unix socket for every scrape;
 2. issue `GET /v1/stats HTTP/1.1` and read until the advertised content length
    or connection close;
-3. require HTTP 200, `schema_version == 1`, and `schema_revision >= 2` when
-   detailed families are needed;
+3. require HTTP 200, `schema_version == 1`, and the minimum schema revision
+   required by the selected families (`2` for lifecycle details, `3` for the
+   operational families);
 4. expose Dante counter values directly instead of accumulating them again;
 5. let Prometheus handle counter resets, using `started_at` as supporting reset
    context;
@@ -251,7 +326,9 @@ the values returned by Dante directly, not maintain a second accumulator.
 - The monitor serves one connection synchronously, so a slow same-UID client
   can delay monitor work.
 - Statistics updates take a global process-shared lock on the I/O hot path,
-  including when `-S` is not configured.
+  including per-datagram revision 3 updates and when `-S` is not configured.
+- Worker gauges are periodic snapshots; target attempts can exceed outcomes
+  while nonblocking connects are in flight.
 - `stats_wait_readable()` currently uses a fixed stack `fd_set`; high-descriptor
   deployments need the dynamic-fd-set issue corrected before production use.
 - Existing socket nodes are removed as stale without checking for an active

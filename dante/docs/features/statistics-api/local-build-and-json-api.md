@@ -108,12 +108,12 @@ curl --noproxy "" \
 
 ## JSON response
 
-`GET /v1/stats` returns schema version 1, revision 2:
+`GET /v1/stats` returns schema version 1, revision 3:
 
 ```json
 {
   "schema_version": 1,
-  "schema_revision": 2,
+  "schema_revision": 3,
   "server_version": "1.4.4",
   "snapshot_time": 1788982182,
   "started_at": 1788982152,
@@ -213,6 +213,111 @@ curl --noproxy "" \
       "peer_closed_total": 0,
       "admin_total": 0,
       "other_total": 0
+    },
+    "target_connects": {
+      "attempts_total": 0,
+      "success_total": 0,
+      "refused_total": 0,
+      "timeout_total": 0,
+      "unreachable_total": 0,
+      "network_error_total": 0,
+      "resource_error_total": 0,
+      "other_total": 0
+    },
+    "udp": {
+      "client_to_target": {
+        "received_total": 0,
+        "forwarded_total": 0,
+        "receive_errors_total": 0,
+        "drops": {
+          "blocked_total": 0,
+          "malformed_total": 0,
+          "dns_error_total": 0,
+          "unexpected_source_total": 0,
+          "send_error_total": 0,
+          "internal_error_total": 0,
+          "other_total": 0
+        }
+      },
+      "target_to_client": {
+        "received_total": 0,
+        "forwarded_total": 0,
+        "receive_errors_total": 0,
+        "drops": {
+          "blocked_total": 0,
+          "malformed_total": 0,
+          "dns_error_total": 0,
+          "unexpected_source_total": 0,
+          "send_error_total": 0,
+          "internal_error_total": 0,
+          "other_total": 0
+        }
+      },
+      "unknown": {
+        "received_total": 0,
+        "forwarded_total": 0,
+        "receive_errors_total": 0,
+        "drops": {
+          "blocked_total": 0,
+          "malformed_total": 0,
+          "dns_error_total": 0,
+          "unexpected_source_total": 0,
+          "send_error_total": 0,
+          "internal_error_total": 0,
+          "other_total": 0
+        }
+      }
+    },
+    "workers": {
+      "negotiate": {
+        "processes": 0, "slots_total": 0, "slots_free": 0,
+        "slots_busy": 0, "spawn_failures_total": 0
+      },
+      "request": {
+        "processes": 0, "slots_total": 0, "slots_free": 0,
+        "slots_busy": 0, "spawn_failures_total": 0
+      },
+      "io": {
+        "processes": 0, "slots_total": 0, "slots_free": 0,
+        "slots_busy": 0, "spawn_failures_total": 0
+      },
+      "unknown": {
+        "processes": 0, "slots_total": 0, "slots_free": 0,
+        "slots_busy": 0, "spawn_failures_total": 0
+      }
+    },
+    "auth": {
+      "none": {"success_total": 0, "failure_total": 0},
+      "username": {"success_total": 0, "failure_total": 0},
+      "gssapi": {"success_total": 0, "failure_total": 0},
+      "pam": {"success_total": 0, "failure_total": 0},
+      "bsdauth": {"success_total": 0, "failure_total": 0},
+      "ldap": {"success_total": 0, "failure_total": 0},
+      "rfc931": {"success_total": 0, "failure_total": 0},
+      "unknown": {"success_total": 0, "failure_total": 0}
+    },
+    "acl": {
+      "client": {"pass_total": 0, "block_total": 0},
+      "hostid": {"pass_total": 0, "block_total": 0},
+      "socks": {"pass_total": 0, "block_total": 0},
+      "unknown": {"pass_total": 0, "block_total": 0}
+    },
+    "dns": {
+      "forward": {
+        "success_total": 0, "not_found_total": 0,
+        "temporary_total": 0, "system_error_total": 0,
+        "internal_error_total": 0, "other_total": 0
+      },
+      "reverse": {
+        "success_total": 0, "not_found_total": 0,
+        "temporary_total": 0, "system_error_total": 0,
+        "internal_error_total": 0, "other_total": 0
+      },
+      "unknown": {
+        "success_total": 0, "not_found_total": 0,
+        "temporary_total": 0, "system_error_total": 0,
+        "internal_error_total": 0, "other_total": 0
+      }
     }
   }
 }

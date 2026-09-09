@@ -1,4 +1,4 @@
-Last verified against implementation commit: 11448e34dc558a425748f56c832c366baa5051c2
+Last verified against implementation commit: 35a8cd4
 
 # Statistics API implementation context
 
@@ -17,10 +17,11 @@ Statistics collection currently runs even when the endpoint is disabled.
 Implemented behavior includes:
 
 - process-shared aggregate counters and active-session gauge;
-- JSON schema version 1, revision 2, preserving every original aggregate
+- JSON schema version 1, revision 3, preserving every original aggregate
   field;
-- fixed-cardinality negotiation, request, per-protocol session, and close
-  reason details suitable for direct exporter translation;
+- fixed-cardinality negotiation, request, session, target-connect, UDP,
+  worker-capacity, authentication, ACL, and DNS details suitable for direct
+  exporter translation;
 - `GET /v1/stats` over a Unix domain stream socket;
 - HTTP/1.0 and HTTP/1.1 request-line parsing;
 - owner-only socket mode `0600`;
@@ -40,9 +41,14 @@ TCP listener, TLS, rate limiting, or per-rule/per-destination metric dimension.
   parsing, socket creation, request serving, and cleanup.
 - `sockd/sockd_negotiate.c`: `run_negotiate()` records terminal negotiation
   outcomes.
-- `sockd/sockd_request.c`: `run_request()` records each command/result outcome.
-- `sockd/sockd_io.c`: `recv_io()`, `io_update()`, and `io_delete()` record
-  sessions, byte counts, closures, and session errors.
+- `sockd/sockd_request.c`: records request results and direct/upstream-proxy
+  target-connect attempts.
+- `sockd/sockd_io.c`: records sessions, byte counts, closures, errors, and
+  deferred target-connect outcomes.
+- `sockd/dante_udp.c`: records datagrams, receive errors, and classified drops.
+- `sockd/sockd_child.c`: publishes worker capacity and creation failures.
+- `sockd/accesscheck.c`, `sockd/rule.c`, and `lib/hostcache.c`: record executed
+  authentication checks, ACL decisions, and resolver backend results.
 
 ## Relevant files
 
@@ -103,15 +109,19 @@ Stored inside the anonymous `sockscf.shmeminfo` mapping. It contains:
 - a four-command by eight-result request matrix;
 - per-protocol session lifecycle values for TCP, UDP, and unknown protocols;
 - eight normalized session close-reason counters.
+- target-connect attempts and seven terminal result counters;
+- three UDP directions with receive/forward/error and drop-reason counters;
+- four worker types with capacity gauges and spawn-failure counters;
+- bounded authentication, ACL-phase, and DNS operation/result matrices.
 
 ### Mutation APIs
 
 `sockd_stat_event_t` and `sockd_stats_add()` retain the original aggregate
 mutation interface. Typed `sockd_stats_add_negotiation()`,
-`sockd_stats_add_request()`, `sockd_stats_add_session_started()`, and
-`sockd_stats_add_session_closed()` update the new detail and compatible
-aggregates together. Their process-shared `sockd_stats_update*()` wrappers take
-one lock per logical event.
+`sockd_stats_add_request()`, `sockd_stats_add_session_started()`,
+`sockd_stats_add_session_closed()`, and the revision 3 typed functions update
+bounded details. Their process-shared `sockd_stats_update*()` wrappers take one
+lock per logical event and preserve the caller's `errno`.
 
 ### `option_t.stats_socket`
 
@@ -164,7 +174,7 @@ under the same effective UID as the monitor unless the access model is changed.
 ## API and metrics contract
 
 The only successful request is `GET /v1/stats`. It returns JSON schema version
-1, revision 2, with server metadata, timestamps, compatible aggregates, and a
+1, revision 3, with server metadata, timestamps, compatible aggregates, and a
 fixed `details` taxonomy. Counter names end in `_total`. The complete
 field-level semantics and suggested future Prometheus mapping are in
 `docs/features/statistics-api/metrics.md`.
@@ -206,7 +216,7 @@ field-level semantics and suggested future Prometheus mapping are in
 ## Invariants
 
 - `schema_version` is `SOCKD_STATS_SCHEMA_VERSION` and currently equals 1.
-- `schema_revision` is `SOCKD_STATS_SCHEMA_REVISION` and currently equals 2.
+- `schema_revision` is `SOCKD_STATS_SCHEMA_REVISION` and currently equals 3.
 - Counters never wrap; they saturate at `UINT64_MAX`.
 - Global and per-protocol active gauges never underflow.
 - Unknown enum inputs enter bounded `unknown` or `other` buckets.
@@ -247,13 +257,20 @@ coverage and live-test procedures are in
   whether another service is actively listening.
 - Socket cleanup checks the path type but does not verify device/inode identity
   against the node originally created.
-- Revision 2 has 57 fixed detailed series. Adding client, destination, user,
+- Revision 3 has 157 fixed detailed numeric series. Adding client,
+  destination, user,
   rule, PID, or free-form error labels in a future exporter would create a
   cardinality or privacy problem.
 - `sessions_established_total` is a compatibility name for I/O admission, not
   proof that the target TCP connect completed.
-- UDP datagram/drop details cannot be reconstructed from the current aggregate
-  byte callback because UDP accounting lives in per-target objects.
+- Target attempts can temporarily exceed outcomes while nonblocking connects
+  are in flight; abnormal worker death can leave that difference.
+- UDP receive errors count failed receive calls. Datagram counters are
+  independent of the aggregate payload-byte counters.
+- Worker capacity is a `childcheck()` snapshot and can be stale until its next
+  cycle; retiring and waiting workers are excluded.
+- Each UDP event currently takes the global statistics lock; benchmark
+  packet-heavy workloads.
 
 ## Do NOT
 
@@ -271,7 +288,7 @@ coverage and live-test procedures are in
 - Do NOT add per-client, per-destination, or per-rule labels without a bounded
   cardinality design.
 - Do NOT infer target-connect success from session admission or infer UDP
-  datagram dimensions from the aggregate byte counters.
+  datagram dimensions from aggregate byte counters; use revision 3 directly.
 - Do NOT move API ownership to every monitor; only the main mother's monitor
   may bind the configured path.
 - Do NOT use a fixed-size `fd_set` for descriptors that may exceed

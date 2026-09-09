@@ -1,4 +1,4 @@
-Last verified against implementation commit: 11448e34dc558a425748f56c832c366baa5051c2
+Last verified against implementation commit: 35a8cd4
 
 # Statistics API architecture
 
@@ -9,7 +9,9 @@ flowchart LR
     M[Mother processes] -->|accept/drop events| S[Shared sockd_stats_t]
     N[Negotiation workers] -->|outcome events| S
     R[Request workers] -->|command/result events| S
-    I[I/O workers] -->|protocol, close and byte events| S
+    I[I/O workers] -->|connect, UDP, protocol, close and byte events| S
+    C[Mother child manager] -->|worker capacity| S
+    A[Auth, ACL and resolver paths] -->|bounded outcomes| S
     S -->|locked snapshot| O[Main mother's monitor]
     O -->|HTTP/JSON over Unix socket| E[Local collector]
     E -. future translation .-> P[Prometheus]
@@ -31,8 +33,13 @@ The mother and worker processes call the API declared in `include/sockd.h`:
   `sockd_stats_update_session_closed()` update both global and per-protocol
   lifecycle values atomically per event;
 - `sockd_stats_update_io()` applies up to four byte deltas under one lock;
+- revision 3 typed wrappers record target-connect, UDP, worker, auth, ACL, and
+  DNS events without exposing raw identities, addresses, errors, or rule IDs;
 - the corresponding `sockd_stats_add*()` functions contain pure transition
-  rules used by production wrappers and standalone tests.
+rules used by production wrappers and standalone tests.
+
+All process-shared update wrappers preserve the caller's `errno` across lock
+acquisition and release.
 
 Event producers do not directly depend on JSON or HTTP behavior. This keeps
 collection independent from the future exporter protocol.
@@ -47,6 +54,11 @@ Producer locations are:
 | I/O | `sockd/sockd_io.c`, `recv_io()` | session admitted, classified by protocol |
 | I/O | `sockd/sockd_io.c`, `io_update()` | four directional byte deltas |
 | I/O | `sockd/sockd_io.c`, `io_delete()` | per-protocol closure, normalized close reason, selected errors |
+| Request/I/O | `sockd/sockd_request.c`, `dorequest()`; `sockd/sockd_io.c`, connect completion/deletion | target-connect attempts and immediate/deferred outcomes |
+| I/O | `sockd/dante_udp.c`, packet forwarding functions | UDP datagrams, receive errors, and drops by direction |
+| Mother | `sockd/sockd_child.c`, `childcheck()` | non-retiring worker capacity and creation failures |
+| Auth/rules | `sockd/accesscheck.c`, `sockd/rule.c` | auth results and ACL pass/block decisions |
+| Resolver | `lib/hostcache.c` | forward/reverse backend query results; cache hits excluded |
 
 Negotiation success is recorded only after successful handoff to the mother,
 so temporary handoff retries do not double-count it. Request outcome is
@@ -99,7 +111,7 @@ and bodies are ignored after the first line.
 
 `sockd_stats_json()` renders only compile-time strings and numeric snapshot
 values. No client-provided value is reflected into JSON or response headers.
-The JSON body buffer is 8192 bytes and the complete response buffer is 16384
+The JSON body buffer is 16384 bytes and the complete response buffer is 32768
 bytes. Serialization goes through a format-checked accumulating writer;
 truncation returns `ENOSPC` and no partial JSON response is served.
 
@@ -130,16 +142,16 @@ exit can therefore leave them stale until server restart.
 
 ## Compatibility model
 
-The wire schema stays at version 1. Revision 2 only adds `schema_revision` and
-the `details` object; every revision 1 path and meaning remains present. This
+The wire schema stays at version 1. Revision 3 additively extends the revision
+2 `details` object; every earlier path and meaning remains present. This
 lets older clients ignore new members while detailed consumers can require a
 minimum revision. Internal enum values never become dynamic JSON keys:
 unrecognized commands/protocols map to `unknown`, and unrecognized results map
 to `other`.
 
 The legacy `sessions_established_total` name intentionally keeps its existing
-admission-time meaning. A true target-connect family cannot be derived at this
-hook because nonblocking CONNECT completion is decided later in the I/O path.
+admission-time meaning. Revision 3 records true nonblocking CONNECT completion
+later in the I/O path instead of changing the compatibility field.
 
 ## Future exporter boundary
 
@@ -168,6 +180,8 @@ and synchronization internals.
   attacker-writable directory.
 - There is no schema negotiation beyond the integer returned in the body.
 - Session active gauges are not reconciled after abnormal worker death.
-- UDP datagram/drop dimensions and true target-connect outcomes require new
-  instrumentation; they must not be inferred from current aggregate bytes or
-  admission counters.
+- UDP events add shared-lock acquisitions on the packet path and need
+  workload-specific contention testing.
+- Target-connect attempts and outcomes can differ while connects are in flight
+  or after abnormal worker death.
+- Worker capacity is sampled by `childcheck()`, not at every slot transition.

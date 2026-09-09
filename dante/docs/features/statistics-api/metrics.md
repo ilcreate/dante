@@ -1,19 +1,21 @@
-Last verified against implementation commit: 11448e34dc558a425748f56c832c366baa5051c2
+Last verified against implementation commit: 35a8cd4
 
 # Statistics API metric dictionary
 
 This document is the canonical semantic dictionary for `GET /v1/stats` at
-schema version 1, revision 2. The API exposes raw cumulative values. A future
+schema version 1, revision 3. The API exposes raw cumulative values. A future
 Prometheus exporter should translate them without accumulating them again.
 
 ## Compatibility
 
 - `schema_version` remains `1` and all revision 1 fields are preserved.
-- `schema_revision` is `2` when the `details` object is available.
+- `schema_revision >= 2` provides the original detailed lifecycle families.
+- `schema_revision >= 3` provides target-connect, UDP, worker, authentication,
+  ACL, and DNS families.
 - Consumers of only the original aggregate fields may ignore
   `schema_revision` and unknown JSON members.
 - Consumers requiring detailed statistics should require
-  `schema_version == 1` and `schema_revision >= 2`.
+  `schema_version == 1` and the minimum revision needed by each family.
 - All counters are saturating `uint64_t` values and reset only when the server
   creates a new shared mapping on restart.
 
@@ -121,8 +123,7 @@ details.sessions.<protocol>.<field>
 
 `started_total` deliberately avoids the word `established`: for a direct,
 nonblocking CONNECT, the I/O object can be admitted before the target connect
-completes. Genuine target-connect attempts/results require a separate future
-family.
+completes. Use the revision 3 target-connect family for actual completion.
 
 ## Session close reasons
 
@@ -153,12 +154,158 @@ Close reasons are independent of `session_errors_total`: blocked, peer, admin,
 normal, and other closures are classified but do not count as legacy session
 errors.
 
+## Target-connect outcomes
+
+JSON paths:
+
+```text
+details.target_connects.attempts_total
+details.target_connects.<result>_total
+```
+
+Suggested mappings:
+
+```text
+dante_target_connect_attempts_total
+dante_target_connect_results_total{result="<result>"}
+```
+
+| Result | Normalized outcome |
+|---|---|
+| `success` | Direct or upstream-proxy target connection completed |
+| `refused` | `ECONNREFUSED` |
+| `timeout` | `ETIMEDOUT`, including pending connects deleted on timeout |
+| `unreachable` | `EHOSTUNREACH` or `ENETUNREACH` |
+| `network_error` | `ECONNRESET`, `ECONNABORTED`, or `ENETDOWN` |
+| `resource_error` | `EMFILE`, `ENFILE`, `ENOBUFS`, or `ENOMEM` |
+| `other` | Any remaining error, including an invalid zero-error failure normalized to `EIO` |
+
+Direct immediate results are recorded in the request worker. `EINPROGRESS`
+results are recorded when the I/O worker observes completion or deletes the
+pending connect. Non-direct upstream proxy connections are recorded as one
+logical target-connect result after `serverchain()`. Attempts can temporarily
+exceed results while connects are pending and can remain unmatched after an
+abnormal worker death.
+
+## UDP datagrams and drops
+
+JSON path template:
+
+```text
+details.udp.<direction>.<field>
+details.udp.<direction>.drops.<reason>_total
+```
+
+Directions are `client_to_target`, `target_to_client`, and `unknown`.
+Suggested mappings are:
+
+```text
+dante_udp_datagrams_received_total{direction="<direction>"}
+dante_udp_datagrams_forwarded_total{direction="<direction>"}
+dante_udp_receive_errors_total{direction="<direction>"}
+dante_udp_drops_total{direction="<direction>",reason="<reason>"}
+```
+
+`received_total` increments after a successful datagram receive;
+`forwarded_total` increments only after a complete successful forwarding send.
+`receive_errors_total` counts failed receive calls, including temporary and
+delayed socket errors, and therefore is not a datagram count.
+
+Drop reasons are fixed: `blocked`, `malformed`, `dns_error`,
+`unexpected_source`, `send_error`, `internal_error`, and `other`. A received
+datagram that reaches a known terminal rejection/error path increments one
+drop bucket. These values do not include kernel/firewall drops before Dante,
+and they are independent of byte counters.
+
+## Worker capacity
+
+JSON path template:
+
+```text
+details.workers.<type>.<field>
+```
+
+Types are `negotiate`, `request`, `io`, and `unknown`. Suggested mappings:
+
+```text
+dante_worker_processes{type="<type>"}
+dante_worker_slots{type="<type>",state="total|free|busy"}
+dante_worker_spawn_failures_total{type="<type>"}
+```
+
+`processes`, `slots_total`, `slots_free`, and `slots_busy` are gauges published
+after `childcheck()` scans workers. Waiting-for-exit and retiring workers are
+excluded; `slots_free` is clamped to total and busy is derived as total minus
+free. `spawn_failures_total` counts both insufficient descriptor reservations
+and failed `addchild()` attempts. Gauges can be stale between scans.
+
+## Authentication checks
+
+JSON path template:
+
+```text
+details.auth.<method>.success_total
+details.auth.<method>.failure_total
+```
+
+Suggested mapping:
+
+```text
+dante_auth_checks_total{method="<method>",result="success|failure"}
+```
+
+Methods are `none`, `username`, `gssapi`, `pam`, `bsdauth`, `ldap`, `rfc931`,
+and `unknown`. PAM variants are intentionally collapsed into `pam`.
+Counters represent authentication checks actually executed by
+`accesscheck()`; cached early-return decisions are not counted again. No user,
+principal, credential, address, or rule identifier is exposed.
+
+## ACL decisions
+
+JSON path template:
+
+```text
+details.acl.<phase>.pass_total
+details.acl.<phase>.block_total
+```
+
+Suggested mapping:
+
+```text
+dante_acl_decisions_total{phase="<phase>",decision="pass|block"}
+```
+
+Phases are `client` (`ACCEPT`/`BOUNCETO`), `hostid`, `socks`
+(`CONNECT`/`BIND`/`UDP ASSOCIATE` and reply checks), and `unknown`. One value
+is emitted for every terminal `rulespermit()` decision, so UDP per-packet rule
+checks are included. This measures decisions, not unique clients or sessions.
+
+## DNS queries
+
+JSON path template:
+
+```text
+details.dns.<operation>.<result>_total
+```
+
+Suggested mapping:
+
+```text
+dante_dns_queries_total{operation="<operation>",result="<result>"}
+```
+
+Operations are `forward`, `reverse`, and `unknown`. Results are `success`,
+`not_found`, `temporary`, `system_error`, `internal_error`, and `other`.
+Counters increment only when Dante calls the resolver backend after its retry
+logic; cache hits are excluded. The JSON never exposes queried names, returned
+addresses, or raw `EAI_*` values.
+
 ## Cardinality and privacy contract
 
-Revision 2 contains 57 fixed detailed series: five negotiation results, 32
-command/result request cells, twelve protocol/session cells, and eight close
-reasons. An exporter can initialize all of them to zero without discovering
-labels dynamically.
+Revision 3 contains 157 fixed detailed numeric series: the 57 revision 2
+series plus eight target-connect values, 30 UDP values, 20 worker values, 16
+authentication values, eight ACL values, and 18 DNS values. An exporter can
+initialize all of them to zero without discovering labels dynamically.
 
 Future revisions must not use these values as labels:
 
@@ -177,8 +324,11 @@ buckets rather than becoming new keys.
   normal `io_delete()` path.
 - `sessions_established_total` is retained for compatibility but represents
   admission to I/O, not target establishment.
-- Detailed TCP/UDP byte and datagram families are not part of revision 2.
-  Dante UDP accounting is held in per-target objects and must not be inferred
-  from the current aggregate byte updater.
+- UDP datagram accounting is available in revision 3, but protocol-specific
+  byte families are not. Do not derive datagrams from aggregate byte values.
+- Target attempts and results can differ while connects are pending or after
+  abnormal worker death.
+- Worker capacity is eventually updated by the child-management scan, not an
+  instantaneous scheduler value.
 - Kernel backlog drops, firewall drops, retransmissions, and on-wire byte
   counts require operating-system telemetry outside this API.

@@ -64,29 +64,144 @@ test_counter_updates(void)
 }
 
 static void
+test_detailed_negotiation_updates(void)
+{
+   sockd_stats_t stats;
+
+   sockd_stats_init(&stats, (time_t)100);
+   TEST_CHECK(stats.schema_revision == SOCKD_STATS_SCHEMA_REVISION);
+
+   sockd_stats_add_negotiation(&stats, SOCKD_STATS_NEGOTIATION_SUCCESS, 2);
+   sockd_stats_add_negotiation(&stats, SOCKD_STATS_NEGOTIATION_EOF, 3);
+   sockd_stats_add_negotiation(&stats, SOCKD_STATS_NEGOTIATION_ERROR, 4);
+   sockd_stats_add_negotiation(&stats, SOCKD_STATS_NEGOTIATION_TIMEOUT, 5);
+   sockd_stats_add_negotiation(&stats,
+                               (sockd_stats_negotiation_t)UINT_MAX, 6);
+
+   TEST_CHECK(stats.negotiation_outcome[SOCKD_STATS_NEGOTIATION_SUCCESS] == 2);
+   TEST_CHECK(stats.negotiation_outcome[SOCKD_STATS_NEGOTIATION_EOF] == 3);
+   TEST_CHECK(stats.negotiation_outcome[SOCKD_STATS_NEGOTIATION_ERROR] == 4);
+   TEST_CHECK(stats.negotiation_outcome[SOCKD_STATS_NEGOTIATION_TIMEOUT] == 5);
+   TEST_CHECK(stats.negotiation_outcome[SOCKD_STATS_NEGOTIATION_UNKNOWN] == 6);
+   TEST_CHECK(stats.negotiation_failures == 18);
+
+   stats.negotiation_outcome[SOCKD_STATS_NEGOTIATION_SUCCESS] = UINT64_MAX - 1;
+   sockd_stats_add_negotiation(&stats, SOCKD_STATS_NEGOTIATION_SUCCESS, 5);
+   TEST_CHECK(stats.negotiation_outcome[SOCKD_STATS_NEGOTIATION_SUCCESS]
+         == UINT64_MAX);
+}
+
+static void
+test_detailed_request_updates(void)
+{
+   sockd_stats_t stats;
+
+   sockd_stats_init(&stats, (time_t)100);
+   sockd_stats_add_request(&stats, SOCKS_CONNECT, IO_NOERROR, 2);
+   sockd_stats_add_request(&stats, SOCKS_BIND, IO_BLOCK, 3);
+   sockd_stats_add_request(&stats, SOCKS_UDPASSOCIATE, IO_TIMEOUT, 4);
+   sockd_stats_add_request(&stats, SOCKS_UNKNOWN, IO_IOERROR, 5);
+   sockd_stats_add_request(&stats, INT_MAX, (iostatus_t)INT_MAX, 6);
+
+   TEST_CHECK(stats.request_outcome[SOCKD_STATS_COMMAND_CONNECT]
+                                    [SOCKD_STATS_RESULT_SUCCESS] == 2);
+   TEST_CHECK(stats.request_outcome[SOCKD_STATS_COMMAND_BIND]
+                                    [SOCKD_STATS_RESULT_BLOCKED] == 3);
+   TEST_CHECK(stats.request_outcome[SOCKD_STATS_COMMAND_UDP_ASSOCIATE]
+                                    [SOCKD_STATS_RESULT_TIMEOUT] == 4);
+   TEST_CHECK(stats.request_outcome[SOCKD_STATS_COMMAND_UNKNOWN]
+                                    [SOCKD_STATS_RESULT_NETWORK_ERROR] == 5);
+   TEST_CHECK(stats.request_outcome[SOCKD_STATS_COMMAND_UNKNOWN]
+                                    [SOCKD_STATS_RESULT_OTHER] == 6);
+   TEST_CHECK(stats.request_failures == 18);
+}
+
+static void
+test_detailed_session_updates(void)
+{
+   sockd_stats_t stats;
+
+   sockd_stats_init(&stats, (time_t)100);
+   sockd_stats_add_session_started(&stats, SOCKS_TCP, 2);
+   sockd_stats_add_session_started(&stats, SOCKS_UDP, 3);
+   sockd_stats_add_session_started(&stats, INT_MAX, 4);
+
+   TEST_CHECK(stats.sessions[SOCKD_STATS_PROTOCOL_TCP].started == 2);
+   TEST_CHECK(stats.sessions[SOCKD_STATS_PROTOCOL_TCP].active == 2);
+   TEST_CHECK(stats.sessions[SOCKD_STATS_PROTOCOL_UDP].started == 3);
+   TEST_CHECK(stats.sessions[SOCKD_STATS_PROTOCOL_UDP].active == 3);
+   TEST_CHECK(stats.sessions[SOCKD_STATS_PROTOCOL_UNKNOWN].started == 4);
+   TEST_CHECK(stats.sessions_established == 9);
+   TEST_CHECK(stats.sessions_active == 9);
+
+   sockd_stats_add_session_closed(&stats, SOCKS_TCP, IO_CLOSE, 1);
+   sockd_stats_add_session_closed(&stats, SOCKS_UDP, IO_TIMEOUT, 2);
+   sockd_stats_add_session_closed(&stats, INT_MAX, IO_ERROR, 10);
+
+   TEST_CHECK(stats.sessions[SOCKD_STATS_PROTOCOL_TCP].active == 1);
+   TEST_CHECK(stats.sessions[SOCKD_STATS_PROTOCOL_TCP].closed == 1);
+   TEST_CHECK(stats.sessions[SOCKD_STATS_PROTOCOL_UDP].active == 1);
+   TEST_CHECK(stats.sessions[SOCKD_STATS_PROTOCOL_UDP].closed == 2);
+   TEST_CHECK(stats.sessions[SOCKD_STATS_PROTOCOL_UDP].errors == 2);
+   TEST_CHECK(stats.sessions[SOCKD_STATS_PROTOCOL_UNKNOWN].active == 0);
+   TEST_CHECK(stats.sessions[SOCKD_STATS_PROTOCOL_UNKNOWN].closed == 10);
+   TEST_CHECK(stats.sessions[SOCKD_STATS_PROTOCOL_UNKNOWN].errors == 10);
+   TEST_CHECK(stats.session_close_reason[SOCKD_STATS_CLOSE_PEER] == 1);
+   TEST_CHECK(stats.session_close_reason[SOCKD_STATS_CLOSE_TIMEOUT] == 2);
+   TEST_CHECK(stats.session_close_reason[SOCKD_STATS_CLOSE_INTERNAL_ERROR]
+         == 10);
+   TEST_CHECK(stats.sessions_closed == 13);
+   TEST_CHECK(stats.sessions_active == 0);
+   TEST_CHECK(stats.session_errors == 12);
+
+   sockd_stats_add_session_closed(&stats, SOCKS_TCP, IO_BLOCK, 1);
+   TEST_CHECK(stats.session_close_reason[SOCKD_STATS_CLOSE_BLOCKED] == 1);
+   TEST_CHECK(stats.session_errors == 12);
+}
+
+static void
 test_json_snapshot(void)
 {
    sockd_stats_t stats;
-   char json[2048];
+   char json[8192];
    ssize_t length;
 
    sockd_stats_init(&stats, (time_t)100);
    sockd_stats_add(&stats, SOCKD_STAT_CLIENT_ACCEPTED, 7);
    sockd_stats_add(&stats, SOCKD_STAT_SESSION_ESTABLISHED, 2);
    sockd_stats_add(&stats, SOCKD_STAT_CLIENT_READ_BYTES, 123);
+   sockd_stats_add_negotiation(&stats, SOCKD_STATS_NEGOTIATION_TIMEOUT, 1);
+   sockd_stats_add_request(&stats, SOCKS_CONNECT, IO_NOERROR, 1);
+   sockd_stats_add_request(&stats, SOCKS_UDPASSOCIATE, IO_BLOCK, 2);
+   sockd_stats_add_session_started(&stats, SOCKS_TCP, 1);
+   sockd_stats_add_session_closed(&stats, SOCKS_TCP, IO_CLOSE, 1);
 
    length = sockd_stats_json(&stats, (time_t)130, json, sizeof(json));
    TEST_CHECK(length > 0);
    TEST_CHECK((size_t)length == strlen(json));
    TEST_CHECK(strstr(json, "\"schema_version\":1") != NULL);
+   TEST_CHECK(strstr(json, "\"schema_revision\":2") != NULL);
    TEST_CHECK(strstr(json, "\"server_version\":\"" VERSION "\"") != NULL);
    TEST_CHECK(strstr(json, "\"snapshot_time\":130") != NULL);
    TEST_CHECK(strstr(json, "\"started_at\":100") != NULL);
    TEST_CHECK(strstr(json, "\"uptime_seconds\":30") != NULL);
    TEST_CHECK(strstr(json, "\"client_connections_accepted_total\":7") != NULL);
-   TEST_CHECK(strstr(json, "\"sessions_established_total\":2") != NULL);
+   TEST_CHECK(strstr(json, "\"sessions_established_total\":3") != NULL);
    TEST_CHECK(strstr(json, "\"sessions_active\":2") != NULL);
    TEST_CHECK(strstr(json, "\"client_read_bytes_total\":123") != NULL);
+   TEST_CHECK(strstr(json, "\"details\":{") != NULL);
+   TEST_CHECK(strstr(json, "\"negotiations\":{") != NULL);
+   TEST_CHECK(strstr(json, "\"timeout_total\":1") != NULL);
+   TEST_CHECK(strstr(json, "\"requests\":{") != NULL);
+   TEST_CHECK(strstr(json, "\"connect\":{\"success_total\":1") != NULL);
+   TEST_CHECK(strstr(json, "\"udp_associate\":{\"success_total\":0,"
+                                "\"blocked_total\":2") != NULL);
+   TEST_CHECK(strstr(json, "\"sessions\":{") != NULL);
+   TEST_CHECK(strstr(json, "\"tcp\":{\"started_total\":1,"
+                                "\"active\":0,\"closed_total\":1")
+         != NULL);
+   TEST_CHECK(strstr(json, "\"session_closures\":{") != NULL);
+   TEST_CHECK(strstr(json, "\"peer_closed_total\":1") != NULL);
 
    length = sockd_stats_json(&stats, (time_t)90, json, sizeof(json));
    TEST_CHECK(length > 0);
@@ -106,6 +221,7 @@ test_http_contract(void)
    const char malformed[] = "garbage\r\n\r\n";
    const char incomplete[] = "GET /v1/stats HTTP/1.1";
    const char bad_version[] = "GET /v1/stats HTTP/2\r\n\r\n";
+   const char v2[] = "GET /v2/stats HTTP/1.1\r\n\r\n";
    sockd_stats_t stats;
    char response[4096];
    ssize_t length;
@@ -140,6 +256,12 @@ test_http_contract(void)
                                       response, sizeof(response));
    TEST_CHECK(length > 0);
    TEST_CHECK(strncmp(response, "HTTP/1.1 400 Bad Request\r\n", 26) == 0);
+
+   length = sockd_stats_http_response(v2, sizeof(v2) - 1,
+                                      &stats, (time_t)130,
+                                      response, sizeof(response));
+   TEST_CHECK(length > 0);
+   TEST_CHECK(strncmp(response, "HTTP/1.1 404 Not Found\r\n", 24) == 0);
 
    length = sockd_stats_http_response(incomplete, sizeof(incomplete) - 1,
                                       &stats, (time_t)130,
@@ -284,6 +406,9 @@ int
 main(void)
 {
    test_counter_updates();
+   test_detailed_negotiation_updates();
+   test_detailed_request_updates();
+   test_detailed_session_updates();
    test_json_snapshot();
    test_http_contract();
    test_unix_socket_validation();

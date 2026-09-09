@@ -34,7 +34,7 @@
  *  Software Distribution Coordinator  or  sdc@inet.no
  *  Inferno Nettverk A/S
  *  Oslo Research Park
- *  Gaustadalléen 21
+ *  GaustadallÃ©en 21
  *  NO-0349 Oslo
  *  Norway
  *
@@ -1848,7 +1848,8 @@ typedef struct {
    } io;
 } statistic_t;
 
-#define SOCKD_STATS_SCHEMA_VERSION (1)
+#define SOCKD_STATS_SCHEMA_VERSION  (1)
+#define SOCKD_STATS_SCHEMA_REVISION (2)
 
 typedef enum {
    SOCKD_STAT_CLIENT_ACCEPTED = 0,
@@ -1864,8 +1865,64 @@ typedef enum {
    SOCKD_STAT_TARGET_WRITTEN_BYTES
 } sockd_stat_event_t;
 
+typedef enum {
+   SOCKD_STATS_NEGOTIATION_SUCCESS = 0,
+   SOCKD_STATS_NEGOTIATION_EOF,
+   SOCKD_STATS_NEGOTIATION_ERROR,
+   SOCKD_STATS_NEGOTIATION_TIMEOUT,
+   SOCKD_STATS_NEGOTIATION_UNKNOWN,
+   SOCKD_STATS_NEGOTIATION_COUNT
+} sockd_stats_negotiation_t;
+
+typedef enum {
+   SOCKD_STATS_COMMAND_CONNECT = 0,
+   SOCKD_STATS_COMMAND_BIND,
+   SOCKD_STATS_COMMAND_UDP_ASSOCIATE,
+   SOCKD_STATS_COMMAND_UNKNOWN,
+   SOCKD_STATS_COMMAND_COUNT
+} sockd_stats_command_t;
+
+typedef enum {
+   SOCKD_STATS_RESULT_SUCCESS = 0,
+   SOCKD_STATS_RESULT_BLOCKED,
+   SOCKD_STATS_RESULT_TIMEOUT,
+   SOCKD_STATS_RESULT_NETWORK_ERROR,
+   SOCKD_STATS_RESULT_INTERNAL_ERROR,
+   SOCKD_STATS_RESULT_CLOSED,
+   SOCKD_STATS_RESULT_ADMIN,
+   SOCKD_STATS_RESULT_OTHER,
+   SOCKD_STATS_RESULT_COUNT
+} sockd_stats_result_t;
+
+typedef enum {
+   SOCKD_STATS_PROTOCOL_TCP = 0,
+   SOCKD_STATS_PROTOCOL_UDP,
+   SOCKD_STATS_PROTOCOL_UNKNOWN,
+   SOCKD_STATS_PROTOCOL_COUNT
+} sockd_stats_protocol_t;
+
+typedef enum {
+   SOCKD_STATS_CLOSE_NORMAL = 0,
+   SOCKD_STATS_CLOSE_BLOCKED,
+   SOCKD_STATS_CLOSE_TIMEOUT,
+   SOCKD_STATS_CLOSE_NETWORK_ERROR,
+   SOCKD_STATS_CLOSE_INTERNAL_ERROR,
+   SOCKD_STATS_CLOSE_PEER,
+   SOCKD_STATS_CLOSE_ADMIN,
+   SOCKD_STATS_CLOSE_OTHER,
+   SOCKD_STATS_CLOSE_COUNT
+} sockd_stats_close_t;
+
+typedef struct {
+   uint64_t started;
+   uint64_t active;
+   uint64_t closed;
+   uint64_t errors;
+} sockd_stats_session_t;
+
 typedef struct {
    uint32_t schema_version;
+   uint32_t schema_revision;
    time_t   started_at;
 
    uint64_t client_connections_accepted;
@@ -1880,6 +1937,12 @@ typedef struct {
    uint64_t client_written_bytes;
    uint64_t target_read_bytes;
    uint64_t target_written_bytes;
+
+   uint64_t negotiation_outcome[SOCKD_STATS_NEGOTIATION_COUNT];
+   uint64_t request_outcome[SOCKD_STATS_COMMAND_COUNT]
+                           [SOCKD_STATS_RESULT_COUNT];
+   sockd_stats_session_t sessions[SOCKD_STATS_PROTOCOL_COUNT];
+   uint64_t session_close_reason[SOCKD_STATS_CLOSE_COUNT];
 } sockd_stats_t;
 
 typedef struct {
@@ -4705,7 +4768,23 @@ int sockd_check_ipclatency(const char *description,
 void sockd_stats_init(sockd_stats_t *stats, time_t started_at);
 void sockd_stats_add(sockd_stats_t *stats, sockd_stat_event_t event,
                      uint64_t value);
+void sockd_stats_add_negotiation(sockd_stats_t *stats,
+                                 sockd_stats_negotiation_t outcome,
+                                 uint64_t value);
+void sockd_stats_add_request(sockd_stats_t *stats, int command,
+                             iostatus_t result, uint64_t value);
+void sockd_stats_add_session_started(sockd_stats_t *stats, int protocol,
+                                     uint64_t value);
+void sockd_stats_add_session_closed(sockd_stats_t *stats, int protocol,
+                                    iostatus_t status, uint64_t value);
 void sockd_stats_update(sockd_stat_event_t event, uint64_t value);
+void sockd_stats_update_negotiation(sockd_stats_negotiation_t outcome,
+                                    uint64_t value);
+void sockd_stats_update_request(int command, iostatus_t result,
+                                uint64_t value);
+void sockd_stats_update_session_started(int protocol, uint64_t value);
+void sockd_stats_update_session_closed(int protocol, iostatus_t status,
+                                       uint64_t value);
 void sockd_stats_update_io(uint64_t client_read, uint64_t client_written,
                            uint64_t target_read, uint64_t target_written);
 void sockd_stats_snapshot(sockd_stats_t *stats);

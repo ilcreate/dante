@@ -35,7 +35,7 @@
  *  Software Distribution Coordinator  or  sdc@inet.no
  *  Inferno Nettverk A/S
  *  Oslo Research Park
- *  Gaustadalléen 21
+ *  GaustadallÃ©en 21
  *  NO-0349 Oslo
  *  Norway
  *
@@ -1884,7 +1884,7 @@ recv_io(s, io)
        * without problems.
        */
       io->allocated = 1;
-      sockd_stats_update(SOCKD_STAT_SESSION_ESTABLISHED, 1);
+      sockd_stats_update_session_started(io->state.protocol, 1);
    }
 
    iostate.freefds -= fdreceived;
@@ -3606,9 +3606,7 @@ io_delete(mother, io, badfd, status)
 
    SASSERTX(io->allocated);
 
-   sockd_stats_update(SOCKD_STAT_SESSION_CLOSED, 1);
-   if (status == IO_IOERROR || status == IO_ERROR || status == IO_TIMEOUT)
-      sockd_stats_update(SOCKD_STAT_SESSION_ERROR, 1);
+   sockd_stats_update_session_closed(io->state.protocol, status, 1);
 
    gettimeofday_monotonic(&tnow);
 

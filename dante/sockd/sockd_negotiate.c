@@ -33,7 +33,7 @@
  *  Software Distribution Coordinator  or  sdc@inet.no
  *  Inferno Nettverk A/S
  *  Oslo Research Park
- *  Gaustadalléen 21
+ *  GaustadallÃ©en 21
  *  NO-0349 Oslo
  *  Norway
  *
@@ -297,6 +297,7 @@ run_negotiate()
 
 
          logdisconnect(neg->s, neg, OPERATION_ERROR, &src, NULL, buf, buflen);
+         sockd_stats_update_negotiation(SOCKD_STATS_NEGOTIATION_TIMEOUT, 1);
          delete_negotiate(neg, 0);
       }
 
@@ -586,6 +587,8 @@ run_negotiate()
 
                errno = 0;
                if (send_negotiate(neg) == 0) {
+                  sockd_stats_update_negotiation(
+                     SOCKD_STATS_NEGOTIATION_SUCCESS, 1);
                   delete_negotiate(neg, 1);
                   sendfailed = 0;
                }
@@ -619,7 +622,11 @@ run_negotiate()
                char reason[256];
                int takingtoolong = 0, erroriseof = 0;
 
-               sockd_stats_update(SOCKD_STAT_NEGOTIATION_FAILED, 1);
+               sockd_stats_update_negotiation(
+                  negstatus == NEGOTIATE_EOF ?
+                     SOCKD_STATS_NEGOTIATION_EOF :
+                     SOCKD_STATS_NEGOTIATION_ERROR,
+                  1);
 
                if (negstatus == NEGOTIATE_EOF) {
                   error      = "eof from local client";

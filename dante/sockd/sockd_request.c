@@ -34,7 +34,7 @@
  *  Software Distribution Coordinator  or  sdc@inet.no
  *  Inferno Nettverk A/S
  *  Oslo Research Park
- *  Gaustadalléen 21
+ *  GaustadallÃ©en 21
  *  NO-0349 Oslo
  *  Norway
  *
@@ -333,9 +333,9 @@ run_request()
                            emsg,
                            sizeof(emsg));
 
-      if (iostatus != IO_NOERROR) {
-         sockd_stats_update(SOCKD_STAT_REQUEST_FAILED, 1);
+      sockd_stats_update_request(req.state.command, iostatus, 1);
 
+      if (iostatus != IO_NOERROR) {
          /*
           * log the client-rule and hostid-rule close also if appropriate,
           * as this will not be logged on the normal session-close in the i/o

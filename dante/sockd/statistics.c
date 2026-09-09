@@ -32,7 +32,7 @@
  *  Software Distribution Coordinator  or  sdc@inet.no
  *  Inferno Nettverk A/S
  *  Oslo Research Park
- *  Gaustadalléen 21
+ *  GaustadallÃ©en 21
  *  NO-0349 Oslo
  *  Norway
  *
@@ -53,7 +53,8 @@ static const char rcsid[] =
 "$Id: statistics.c,v 1.33 2013/10/27 15:24:43 karls Exp $";
 
 #define SOCKD_STATS_REQUEST_MAX (4096)
-#define SOCKD_STATS_RESPONSE_MAX (4096)
+#define SOCKD_STATS_BODY_MAX (8192)
+#define SOCKD_STATS_RESPONSE_MAX (16384)
 #define SOCKD_STATS_IO_TIMEOUT_SECONDS (1)
 
 static void
@@ -70,6 +71,7 @@ sockd_stats_init(sockd_stats_t *stats, const time_t started_at)
 {
    bzero(stats, sizeof(*stats));
    stats->schema_version = SOCKD_STATS_SCHEMA_VERSION;
+   stats->schema_revision = SOCKD_STATS_SCHEMA_REVISION;
    stats->started_at     = started_at;
 }
 
@@ -129,6 +131,194 @@ sockd_stats_add(sockd_stats_t *stats, const sockd_stat_event_t event,
    }
 }
 
+static sockd_stats_negotiation_t
+normalize_negotiation(const sockd_stats_negotiation_t outcome)
+{
+   switch (outcome) {
+      case SOCKD_STATS_NEGOTIATION_SUCCESS:
+      case SOCKD_STATS_NEGOTIATION_EOF:
+      case SOCKD_STATS_NEGOTIATION_ERROR:
+      case SOCKD_STATS_NEGOTIATION_TIMEOUT:
+      case SOCKD_STATS_NEGOTIATION_UNKNOWN:
+         return outcome;
+
+      case SOCKD_STATS_NEGOTIATION_COUNT:
+         break;
+   }
+
+   return SOCKD_STATS_NEGOTIATION_UNKNOWN;
+}
+
+static sockd_stats_command_t
+normalize_command(const int command)
+{
+   switch (command) {
+      case SOCKS_CONNECT:
+         return SOCKD_STATS_COMMAND_CONNECT;
+
+      case SOCKS_BIND:
+         return SOCKD_STATS_COMMAND_BIND;
+
+      case SOCKS_UDPASSOCIATE:
+         return SOCKD_STATS_COMMAND_UDP_ASSOCIATE;
+   }
+
+   return SOCKD_STATS_COMMAND_UNKNOWN;
+}
+
+static sockd_stats_result_t
+normalize_result(const iostatus_t result)
+{
+   switch (result) {
+      case IO_NOERROR:
+         return SOCKD_STATS_RESULT_SUCCESS;
+
+      case IO_BLOCK:
+      case IO_TMPBLOCK:
+         return SOCKD_STATS_RESULT_BLOCKED;
+
+      case IO_TIMEOUT:
+         return SOCKD_STATS_RESULT_TIMEOUT;
+
+      case IO_IOERROR:
+         return SOCKD_STATS_RESULT_NETWORK_ERROR;
+
+      case IO_ERROR:
+         return SOCKD_STATS_RESULT_INTERNAL_ERROR;
+
+      case IO_CLOSE:
+         return SOCKD_STATS_RESULT_CLOSED;
+
+      case IO_ADMINTERMINATION:
+         return SOCKD_STATS_RESULT_ADMIN;
+
+      case IO_TMPERROR:
+      case IO_EAGAIN:
+         return SOCKD_STATS_RESULT_OTHER;
+   }
+
+   return SOCKD_STATS_RESULT_OTHER;
+}
+
+static sockd_stats_protocol_t
+normalize_protocol(const int protocol)
+{
+   switch (protocol) {
+      case SOCKS_TCP:
+         return SOCKD_STATS_PROTOCOL_TCP;
+
+      case SOCKS_UDP:
+         return SOCKD_STATS_PROTOCOL_UDP;
+   }
+
+   return SOCKD_STATS_PROTOCOL_UNKNOWN;
+}
+
+static sockd_stats_close_t
+normalize_close(const iostatus_t status)
+{
+   switch (status) {
+      case IO_NOERROR:
+         return SOCKD_STATS_CLOSE_NORMAL;
+
+      case IO_BLOCK:
+      case IO_TMPBLOCK:
+         return SOCKD_STATS_CLOSE_BLOCKED;
+
+      case IO_TIMEOUT:
+         return SOCKD_STATS_CLOSE_TIMEOUT;
+
+      case IO_IOERROR:
+         return SOCKD_STATS_CLOSE_NETWORK_ERROR;
+
+      case IO_ERROR:
+         return SOCKD_STATS_CLOSE_INTERNAL_ERROR;
+
+      case IO_CLOSE:
+         return SOCKD_STATS_CLOSE_PEER;
+
+      case IO_ADMINTERMINATION:
+         return SOCKD_STATS_CLOSE_ADMIN;
+
+      case IO_TMPERROR:
+      case IO_EAGAIN:
+         return SOCKD_STATS_CLOSE_OTHER;
+   }
+
+   return SOCKD_STATS_CLOSE_OTHER;
+}
+
+static int
+status_is_error(const iostatus_t status)
+{
+   return status == IO_IOERROR || status == IO_ERROR || status == IO_TIMEOUT;
+}
+
+static void
+subtract_gauge(uint64_t *gauge, const uint64_t value)
+{
+   if (value >= *gauge)
+      *gauge = 0;
+   else
+      *gauge -= value;
+}
+
+void
+sockd_stats_add_negotiation(sockd_stats_t *stats,
+                            const sockd_stats_negotiation_t outcome,
+                            const uint64_t value)
+{
+   const sockd_stats_negotiation_t normalized
+   = normalize_negotiation(outcome);
+
+   add_counter(&stats->negotiation_outcome[normalized], value);
+   if (normalized != SOCKD_STATS_NEGOTIATION_SUCCESS)
+      add_counter(&stats->negotiation_failures, value);
+}
+
+void
+sockd_stats_add_request(sockd_stats_t *stats, const int command,
+                        const iostatus_t result, const uint64_t value)
+{
+   const sockd_stats_command_t normalized_command = normalize_command(command);
+   const sockd_stats_result_t normalized_result = normalize_result(result);
+
+   add_counter(&stats->request_outcome[normalized_command][normalized_result],
+               value);
+   if (normalized_result != SOCKD_STATS_RESULT_SUCCESS)
+      add_counter(&stats->request_failures, value);
+}
+
+void
+sockd_stats_add_session_started(sockd_stats_t *stats, const int protocol,
+                                const uint64_t value)
+{
+   sockd_stats_session_t *session
+   = &stats->sessions[normalize_protocol(protocol)];
+
+   sockd_stats_add(stats, SOCKD_STAT_SESSION_ESTABLISHED, value);
+   add_counter(&session->started, value);
+   add_counter(&session->active, value);
+}
+
+void
+sockd_stats_add_session_closed(sockd_stats_t *stats, const int protocol,
+                               const iostatus_t status, const uint64_t value)
+{
+   sockd_stats_session_t *session
+   = &stats->sessions[normalize_protocol(protocol)];
+
+   sockd_stats_add(stats, SOCKD_STAT_SESSION_CLOSED, value);
+   add_counter(&session->closed, value);
+   subtract_gauge(&session->active, value);
+   add_counter(&stats->session_close_reason[normalize_close(status)], value);
+
+   if (status_is_error(status)) {
+      sockd_stats_add(stats, SOCKD_STAT_SESSION_ERROR, value);
+      add_counter(&session->errors, value);
+   }
+}
+
 #if !SOCKD_STATS_TEST
 void
 sockd_stats_update(const sockd_stat_event_t event, const uint64_t value)
@@ -138,6 +328,57 @@ sockd_stats_update(const sockd_stat_event_t event, const uint64_t value)
 
    socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
    sockd_stats_add(&sockscf.shmeminfo->stats, event, value);
+   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+}
+
+void
+sockd_stats_update_negotiation(const sockd_stats_negotiation_t outcome,
+                               const uint64_t value)
+{
+   if (sockscf.shmeminfo == NULL)
+      return;
+
+   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_add_negotiation(&sockscf.shmeminfo->stats, outcome, value);
+   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+}
+
+void
+sockd_stats_update_request(const int command, const iostatus_t result,
+                           const uint64_t value)
+{
+   if (sockscf.shmeminfo == NULL)
+      return;
+
+   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_add_request(&sockscf.shmeminfo->stats, command, result, value);
+   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+}
+
+void
+sockd_stats_update_session_started(const int protocol, const uint64_t value)
+{
+   if (sockscf.shmeminfo == NULL)
+      return;
+
+   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_add_session_started(&sockscf.shmeminfo->stats, protocol, value);
+   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+}
+
+void
+sockd_stats_update_session_closed(const int protocol,
+                                  const iostatus_t status,
+                                  const uint64_t value)
+{
+   if (sockscf.shmeminfo == NULL)
+      return;
+
+   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_add_session_closed(&sockscf.shmeminfo->stats,
+                                  protocol,
+                                  status,
+                                  value);
    socks_unlock(sockscf.shmemfd, (off_t)0, 1);
 }
 
@@ -177,16 +418,75 @@ sockd_stats_snapshot(sockd_stats_t *stats)
 }
 #endif /* !SOCKD_STATS_TEST */
 
+typedef struct {
+   char   *data;
+   size_t size;
+   size_t used;
+   int    failed;
+} stats_buffer_t;
+
+#define STATS_BUFFER_APPEND(buffer, ...)                                      \
+do {                                                                           \
+   stats_buffer_t *const _stats_output = (buffer);                             \
+   if (!_stats_output->failed) {                                               \
+      if (_stats_output->used >= _stats_output->size) {                        \
+         _stats_output->failed = 1;                                            \
+         errno = ENOSPC;                                                       \
+      }                                                                        \
+      else {                                                                   \
+         const size_t _stats_available                                         \
+         = _stats_output->size - _stats_output->used;                          \
+         const int _stats_length                                               \
+         = snprintf(_stats_output->data + _stats_output->used,                 \
+                    _stats_available, __VA_ARGS__);                            \
+                                                                               \
+         if (_stats_length < 0)                                                \
+            _stats_output->failed = 1;                                         \
+         else if ((size_t)_stats_length >= _stats_available) {                 \
+            _stats_output->failed = 1;                                         \
+            errno = ENOSPC;                                                    \
+         }                                                                     \
+         else                                                                  \
+            _stats_output->used += (size_t)_stats_length;                      \
+      }                                                                        \
+   }                                                                           \
+} while (/* CONSTCOND */ 0)
+
 ssize_t
 sockd_stats_json(const sockd_stats_t *stats, const time_t now,
                  char *response, const size_t responsesize)
 {
+   static const char *const negotiation_names[] = {
+      "success", "eof", "error", "timeout", "unknown"
+   };
+   static const char *const command_names[] = {
+      "connect", "bind", "udp_associate", "unknown"
+   };
+   static const char *const result_names[] = {
+      "success", "blocked", "timeout", "network_error", "internal_error",
+      "closed", "admin", "other"
+   };
+   static const char *const protocol_names[] = {
+      "tcp", "udp", "unknown"
+   };
+   static const char *const close_names[] = {
+      "normal", "blocked", "timeout", "network_error", "internal_error",
+      "peer_closed", "admin", "other"
+   };
    const intmax_t uptime = now > stats->started_at ?
                               (intmax_t)(now - stats->started_at) : 0;
-   int length;
+   stats_buffer_t output = { response, responsesize, 0, 0 };
+   size_t command, negotiation, protocol, result, reason;
 
-   length = snprintf(response, responsesize,
+   SASSERTX(ELEMENTS(negotiation_names) == SOCKD_STATS_NEGOTIATION_COUNT);
+   SASSERTX(ELEMENTS(command_names) == SOCKD_STATS_COMMAND_COUNT);
+   SASSERTX(ELEMENTS(result_names) == SOCKD_STATS_RESULT_COUNT);
+   SASSERTX(ELEMENTS(protocol_names) == SOCKD_STATS_PROTOCOL_COUNT);
+   SASSERTX(ELEMENTS(close_names) == SOCKD_STATS_CLOSE_COUNT);
+
+   STATS_BUFFER_APPEND(&output,
       "{\"schema_version\":%u,"
+      "\"schema_revision\":%u,"
       "\"server_version\":\"%s\","
       "\"snapshot_time\":%"PRIdMAX","
       "\"started_at\":%"PRIdMAX","
@@ -204,8 +504,10 @@ sockd_stats_json(const sockd_stats_t *stats, const time_t now,
          "\"target_read_bytes_total\":%"PRIu64","
          "\"target_written_bytes_total\":%"PRIu64
       "},"
-      "\"gauges\":{\"sessions_active\":%"PRIu64"}}\n",
+      "\"gauges\":{\"sessions_active\":%"PRIu64"},"
+      "\"details\":{\"negotiations\":{",
       stats->schema_version,
+      stats->schema_revision,
       VERSION,
       (intmax_t)now,
       (intmax_t)stats->started_at,
@@ -223,12 +525,67 @@ sockd_stats_json(const sockd_stats_t *stats, const time_t now,
       stats->target_written_bytes,
       stats->sessions_active);
 
-   if (length < 0 || (size_t)length >= responsesize) {
-      errno = ENOSPC;
-      return -1;
+   for (negotiation = 0;
+        negotiation < SOCKD_STATS_NEGOTIATION_COUNT;
+        ++negotiation) {
+      STATS_BUFFER_APPEND(&output,
+                          "%s\"%s_total\":%"PRIu64,
+                          negotiation == 0 ? "" : ",",
+                          negotiation_names[negotiation],
+                          stats->negotiation_outcome[negotiation]);
    }
 
-   return length;
+   STATS_BUFFER_APPEND(&output, "},\"requests\":{");
+   for (command = 0; command < SOCKD_STATS_COMMAND_COUNT; ++command) {
+      STATS_BUFFER_APPEND(&output,
+                          "%s\"%s\":{",
+                          command == 0 ? "" : ",",
+                          command_names[command]);
+
+      for (result = 0; result < SOCKD_STATS_RESULT_COUNT; ++result) {
+         STATS_BUFFER_APPEND(&output,
+                             "%s\"%s_total\":%"PRIu64,
+                             result == 0 ? "" : ",",
+                             result_names[result],
+                             stats->request_outcome[command][result]);
+      }
+
+      STATS_BUFFER_APPEND(&output, "}");
+   }
+
+   STATS_BUFFER_APPEND(&output, "},\"sessions\":{");
+   for (protocol = 0; protocol < SOCKD_STATS_PROTOCOL_COUNT; ++protocol) {
+      const sockd_stats_session_t *session = &stats->sessions[protocol];
+
+      STATS_BUFFER_APPEND(&output,
+                          "%s\"%s\":{"
+                          "\"started_total\":%"PRIu64","
+                          "\"active\":%"PRIu64","
+                          "\"closed_total\":%"PRIu64","
+                          "\"errors_total\":%"PRIu64"}",
+                          protocol == 0 ? "" : ",",
+                          protocol_names[protocol],
+                          session->started,
+                          session->active,
+                          session->closed,
+                          session->errors);
+   }
+
+   STATS_BUFFER_APPEND(&output, "},\"session_closures\":{");
+   for (reason = 0; reason < SOCKD_STATS_CLOSE_COUNT; ++reason) {
+      STATS_BUFFER_APPEND(&output,
+                          "%s\"%s_total\":%"PRIu64,
+                          reason == 0 ? "" : ",",
+                          close_names[reason],
+                          stats->session_close_reason[reason]);
+   }
+
+   STATS_BUFFER_APPEND(&output, "}}}\n");
+
+   if (output.failed)
+      return -1;
+
+   return (ssize_t)output.used;
 }
 
 static ssize_t
@@ -303,7 +660,8 @@ sockd_stats_http_response(const char *request, const size_t requestlen,
    static const char not_found[] = "{\"error\":\"not found\"}\n";
    static const char method_not_allowed[] =
       "{\"error\":\"method not allowed\"}\n";
-   char line[512], method[16], path[256], version[16], body[2048];
+   char line[512], method[16], path[256], version[16];
+   char body[SOCKD_STATS_BODY_MAX];
    size_t linelen;
    ssize_t bodylen;
 

@@ -251,11 +251,183 @@ test_session_close_taxonomy(void)
 }
 
 static void
+test_target_connect_updates(void)
+{
+   sockd_stats_t stats;
+
+   sockd_stats_init(&stats, (time_t)100);
+   sockd_stats_add_target_connect_attempt(&stats, 7);
+   sockd_stats_add_target_connect_result(&stats, 0, 1);
+   sockd_stats_add_target_connect_result(&stats, ECONNREFUSED, 2);
+   sockd_stats_add_target_connect_result(&stats, ETIMEDOUT, 3);
+   sockd_stats_add_target_connect_result(&stats, EHOSTUNREACH, 4);
+   sockd_stats_add_target_connect_result(&stats, ECONNRESET, 5);
+   sockd_stats_add_target_connect_result(&stats, EMFILE, 6);
+   sockd_stats_add_target_connect_result(&stats, INT_MAX, 7);
+
+   TEST_CHECK(stats.target_connect_attempts == 7);
+   TEST_CHECK(stats.target_connect_outcome[SOCKD_STATS_CONNECT_SUCCESS] == 1);
+   TEST_CHECK(stats.target_connect_outcome[SOCKD_STATS_CONNECT_REFUSED] == 2);
+   TEST_CHECK(stats.target_connect_outcome[SOCKD_STATS_CONNECT_TIMEOUT] == 3);
+   TEST_CHECK(stats.target_connect_outcome[SOCKD_STATS_CONNECT_UNREACHABLE]
+         == 4);
+   TEST_CHECK(stats.target_connect_outcome[SOCKD_STATS_CONNECT_NETWORK_ERROR]
+         == 5);
+   TEST_CHECK(stats.target_connect_outcome[SOCKD_STATS_CONNECT_RESOURCE_ERROR]
+         == 6);
+   TEST_CHECK(stats.target_connect_outcome[SOCKD_STATS_CONNECT_OTHER] == 7);
+
+   stats.target_connect_attempts = UINT64_MAX - 1;
+   sockd_stats_add_target_connect_attempt(&stats, 5);
+   TEST_CHECK(stats.target_connect_attempts == UINT64_MAX);
+}
+
+static void
+test_udp_datagram_updates(void)
+{
+   sockd_stats_t stats;
+   sockd_stats_udp_t *client_to_target;
+   sockd_stats_udp_t *target_to_client;
+
+   sockd_stats_init(&stats, (time_t)100);
+   sockd_stats_add_udp_received(&stats, SOCKD_STATS_UDP_CLIENT_TO_TARGET, 10);
+   sockd_stats_add_udp_forwarded(&stats, SOCKD_STATS_UDP_CLIENT_TO_TARGET, 4);
+   sockd_stats_add_udp_drop(&stats, SOCKD_STATS_UDP_CLIENT_TO_TARGET,
+                            SOCKD_STATS_UDP_DROP_BLOCKED, 2);
+   sockd_stats_add_udp_drop(&stats, SOCKD_STATS_UDP_CLIENT_TO_TARGET,
+                            SOCKD_STATS_UDP_DROP_MALFORMED, 1);
+   sockd_stats_add_udp_drop(&stats, SOCKD_STATS_UDP_CLIENT_TO_TARGET,
+                            SOCKD_STATS_UDP_DROP_DNS_ERROR, 1);
+   sockd_stats_add_udp_drop(&stats, SOCKD_STATS_UDP_CLIENT_TO_TARGET,
+                            SOCKD_STATS_UDP_DROP_UNEXPECTED_SOURCE, 1);
+   sockd_stats_add_udp_drop(&stats, SOCKD_STATS_UDP_CLIENT_TO_TARGET,
+                            SOCKD_STATS_UDP_DROP_SEND_ERROR, 1);
+   sockd_stats_add_udp_receive_error(&stats,
+                                     SOCKD_STATS_UDP_CLIENT_TO_TARGET, 3);
+
+   sockd_stats_add_udp_received(&stats, SOCKD_STATS_UDP_TARGET_TO_CLIENT, 8);
+   sockd_stats_add_udp_forwarded(&stats, SOCKD_STATS_UDP_TARGET_TO_CLIENT, 7);
+   sockd_stats_add_udp_drop(&stats, SOCKD_STATS_UDP_TARGET_TO_CLIENT,
+                            SOCKD_STATS_UDP_DROP_INTERNAL_ERROR, 1);
+   sockd_stats_add_udp_drop(&stats, (sockd_stats_udp_direction_t)UINT_MAX,
+                            (sockd_stats_udp_drop_t)UINT_MAX, 5);
+
+   client_to_target = &stats.udp[SOCKD_STATS_UDP_CLIENT_TO_TARGET];
+   target_to_client = &stats.udp[SOCKD_STATS_UDP_TARGET_TO_CLIENT];
+   TEST_CHECK(client_to_target->received == 10);
+   TEST_CHECK(client_to_target->forwarded == 4);
+   TEST_CHECK(client_to_target->receive_errors == 3);
+   TEST_CHECK(client_to_target->dropped[SOCKD_STATS_UDP_DROP_BLOCKED] == 2);
+   TEST_CHECK(client_to_target->dropped[SOCKD_STATS_UDP_DROP_MALFORMED] == 1);
+   TEST_CHECK(client_to_target->dropped[SOCKD_STATS_UDP_DROP_DNS_ERROR] == 1);
+   TEST_CHECK(client_to_target->dropped[SOCKD_STATS_UDP_DROP_UNEXPECTED_SOURCE]
+         == 1);
+   TEST_CHECK(client_to_target->dropped[SOCKD_STATS_UDP_DROP_SEND_ERROR] == 1);
+   TEST_CHECK(target_to_client->received == 8);
+   TEST_CHECK(target_to_client->forwarded == 7);
+   TEST_CHECK(target_to_client->dropped[SOCKD_STATS_UDP_DROP_INTERNAL_ERROR]
+         == 1);
+   TEST_CHECK(stats.udp[SOCKD_STATS_UDP_DIRECTION_UNKNOWN]
+                       .dropped[SOCKD_STATS_UDP_DROP_OTHER] == 5);
+}
+
+static void
+test_worker_capacity_updates(void)
+{
+   sockd_stats_t stats;
+   sockd_stats_worker_t *worker;
+
+   sockd_stats_init(&stats, (time_t)100);
+   sockd_stats_set_worker_capacity(&stats, PROC_NEGOTIATE, 2, 64, 40);
+   worker = &stats.workers[SOCKD_STATS_WORKER_NEGOTIATE];
+   TEST_CHECK(worker->processes == 2);
+   TEST_CHECK(worker->slots_total == 64);
+   TEST_CHECK(worker->slots_free == 40);
+   TEST_CHECK(worker->slots_busy == 24);
+
+   sockd_stats_set_worker_capacity(&stats, PROC_REQUEST, 1, 8, 99);
+   worker = &stats.workers[SOCKD_STATS_WORKER_REQUEST];
+   TEST_CHECK(worker->slots_total == 8);
+   TEST_CHECK(worker->slots_free == 8);
+   TEST_CHECK(worker->slots_busy == 0);
+
+   sockd_stats_add_worker_spawn_failure(&stats, PROC_IO, 2);
+   sockd_stats_add_worker_spawn_failure(&stats, INT_MAX, 3);
+   TEST_CHECK(stats.workers[SOCKD_STATS_WORKER_IO].spawn_failures == 2);
+   TEST_CHECK(stats.workers[SOCKD_STATS_WORKER_UNKNOWN].spawn_failures == 3);
+}
+
+static void
+test_auth_acl_dns_updates(void)
+{
+   sockd_stats_t stats;
+
+   sockd_stats_init(&stats, (time_t)100);
+   sockd_stats_add_auth(&stats, AUTHMETHOD_NONE, 1, 2);
+   sockd_stats_add_auth(&stats, AUTHMETHOD_UNAME, 0, 3);
+   sockd_stats_add_auth(&stats, AUTHMETHOD_GSSAPI, 1, 4);
+   sockd_stats_add_auth(&stats, AUTHMETHOD_PAM_USERNAME, 0, 5);
+   sockd_stats_add_auth(&stats, AUTHMETHOD_BSDAUTH, 1, 6);
+   sockd_stats_add_auth(&stats, AUTHMETHOD_LDAPAUTH, 0, 7);
+   sockd_stats_add_auth(&stats, AUTHMETHOD_RFC931, 1, 8);
+   sockd_stats_add_auth(&stats, INT_MAX, 0, 9);
+
+   TEST_CHECK(stats.auth[SOCKD_STATS_AUTH_NONE][SOCKD_STATS_DECISION_SUCCESS]
+         == 2);
+   TEST_CHECK(stats.auth[SOCKD_STATS_AUTH_USERNAME][SOCKD_STATS_DECISION_FAILURE]
+         == 3);
+   TEST_CHECK(stats.auth[SOCKD_STATS_AUTH_GSSAPI][SOCKD_STATS_DECISION_SUCCESS]
+         == 4);
+   TEST_CHECK(stats.auth[SOCKD_STATS_AUTH_PAM][SOCKD_STATS_DECISION_FAILURE]
+         == 5);
+   TEST_CHECK(stats.auth[SOCKD_STATS_AUTH_BSDAUTH][SOCKD_STATS_DECISION_SUCCESS]
+         == 6);
+   TEST_CHECK(stats.auth[SOCKD_STATS_AUTH_LDAP][SOCKD_STATS_DECISION_FAILURE]
+         == 7);
+   TEST_CHECK(stats.auth[SOCKD_STATS_AUTH_RFC931][SOCKD_STATS_DECISION_SUCCESS]
+         == 8);
+   TEST_CHECK(stats.auth[SOCKD_STATS_AUTH_UNKNOWN][SOCKD_STATS_DECISION_FAILURE]
+         == 9);
+
+   sockd_stats_add_acl(&stats, SOCKS_ACCEPT, 1, 2);
+   sockd_stats_add_acl(&stats, SOCKS_HOSTID, 0, 3);
+   sockd_stats_add_acl(&stats, SOCKS_CONNECT, 1, 4);
+   sockd_stats_add_acl(&stats, INT_MAX, 0, 5);
+   TEST_CHECK(stats.acl[SOCKD_STATS_ACL_CLIENT][SOCKD_STATS_DECISION_SUCCESS]
+         == 2);
+   TEST_CHECK(stats.acl[SOCKD_STATS_ACL_HOSTID][SOCKD_STATS_DECISION_FAILURE]
+         == 3);
+   TEST_CHECK(stats.acl[SOCKD_STATS_ACL_SOCKS][SOCKD_STATS_DECISION_SUCCESS]
+         == 4);
+   TEST_CHECK(stats.acl[SOCKD_STATS_ACL_UNKNOWN][SOCKD_STATS_DECISION_FAILURE]
+         == 5);
+
+   sockd_stats_add_dns(&stats, SOCKD_STATS_DNS_FORWARD, 0, 2);
+   sockd_stats_add_dns(&stats, SOCKD_STATS_DNS_FORWARD, EAI_NONAME, 3);
+   sockd_stats_add_dns(&stats, SOCKD_STATS_DNS_FORWARD, EAI_AGAIN, 4);
+   sockd_stats_add_dns(&stats, SOCKD_STATS_DNS_REVERSE, EAI_SYSTEM, 5);
+   sockd_stats_add_dns(&stats, SOCKD_STATS_DNS_REVERSE, EAI_BADFLAGS, 6);
+   sockd_stats_add_dns(&stats, (sockd_stats_dns_operation_t)UINT_MAX,
+                       INT_MAX, 7);
+   TEST_CHECK(stats.dns[SOCKD_STATS_DNS_FORWARD][SOCKD_STATS_DNS_SUCCESS] == 2);
+   TEST_CHECK(stats.dns[SOCKD_STATS_DNS_FORWARD][SOCKD_STATS_DNS_NOT_FOUND]
+         == 3);
+   TEST_CHECK(stats.dns[SOCKD_STATS_DNS_FORWARD][SOCKD_STATS_DNS_TEMPORARY]
+         == 4);
+   TEST_CHECK(stats.dns[SOCKD_STATS_DNS_REVERSE][SOCKD_STATS_DNS_SYSTEM_ERROR]
+         == 5);
+   TEST_CHECK(stats.dns[SOCKD_STATS_DNS_REVERSE][SOCKD_STATS_DNS_INTERNAL_ERROR]
+         == 6);
+   TEST_CHECK(stats.dns[SOCKD_STATS_DNS_OPERATION_UNKNOWN][SOCKD_STATS_DNS_OTHER]
+         == 7);
+}
+
+static void
 test_json_snapshot(void)
 {
    sockd_stats_t stats;
-   char exact[8192];
-   char json[8192];
+   char exact[16384];
+   char json[16384];
    ssize_t length;
 
    sockd_stats_init(&stats, (time_t)100);
@@ -267,12 +439,23 @@ test_json_snapshot(void)
    sockd_stats_add_request(&stats, SOCKS_UDPASSOCIATE, IO_BLOCK, 2);
    sockd_stats_add_session_started(&stats, SOCKS_TCP, 1);
    sockd_stats_add_session_closed(&stats, SOCKS_TCP, IO_CLOSE, 1);
+   sockd_stats_add_target_connect_attempt(&stats, 1);
+   sockd_stats_add_target_connect_result(&stats, 0, 1);
+   sockd_stats_add_udp_received(&stats, SOCKD_STATS_UDP_CLIENT_TO_TARGET, 2);
+   sockd_stats_add_udp_forwarded(&stats, SOCKD_STATS_UDP_CLIENT_TO_TARGET, 1);
+   sockd_stats_add_udp_drop(&stats, SOCKD_STATS_UDP_CLIENT_TO_TARGET,
+                            SOCKD_STATS_UDP_DROP_BLOCKED, 1);
+   sockd_stats_set_worker_capacity(&stats, PROC_IO, 2, 64, 60);
+   sockd_stats_add_worker_spawn_failure(&stats, PROC_IO, 1);
+   sockd_stats_add_auth(&stats, AUTHMETHOD_UNAME, 0, 1);
+   sockd_stats_add_acl(&stats, SOCKS_CONNECT, 1, 1);
+   sockd_stats_add_dns(&stats, SOCKD_STATS_DNS_FORWARD, EAI_AGAIN, 1);
 
    length = sockd_stats_json(&stats, (time_t)130, json, sizeof(json));
    TEST_CHECK(length > 0);
    TEST_CHECK((size_t)length == strlen(json));
    TEST_CHECK(strstr(json, "\"schema_version\":1") != NULL);
-   TEST_CHECK(strstr(json, "\"schema_revision\":2") != NULL);
+   TEST_CHECK(strstr(json, "\"schema_revision\":3") != NULL);
    TEST_CHECK(strstr(json, "\"server_version\":\"" VERSION "\"") != NULL);
    TEST_CHECK(strstr(json, "\"snapshot_time\":130") != NULL);
    TEST_CHECK(strstr(json, "\"started_at\":100") != NULL);
@@ -294,6 +477,27 @@ test_json_snapshot(void)
          != NULL);
    TEST_CHECK(strstr(json, "\"session_closures\":{") != NULL);
    TEST_CHECK(strstr(json, "\"peer_closed_total\":1") != NULL);
+   TEST_CHECK(strstr(json, "\"target_connects\":{\"attempts_total\":1,")
+         != NULL);
+   TEST_CHECK(strstr(json, "\"success_total\":1,\"refused_total\":0")
+         != NULL);
+   TEST_CHECK(strstr(json, "\"udp\":{\"client_to_target\":{"
+                                "\"received_total\":2,\"forwarded_total\":1")
+         != NULL);
+   TEST_CHECK(strstr(json, "\"blocked_total\":1,\"malformed_total\":0")
+         != NULL);
+   TEST_CHECK(strstr(json, "\"workers\":{") != NULL);
+   TEST_CHECK(strstr(json, "\"io\":{\"processes\":2,\"slots_total\":64,"
+                                "\"slots_free\":60,\"slots_busy\":4,"
+                                "\"spawn_failures_total\":1}") != NULL);
+   TEST_CHECK(strstr(json, "\"auth\":{") != NULL);
+   TEST_CHECK(strstr(json, "\"username\":{\"success_total\":0,"
+                                "\"failure_total\":1}") != NULL);
+   TEST_CHECK(strstr(json, "\"acl\":{") != NULL);
+   TEST_CHECK(strstr(json, "\"socks\":{\"pass_total\":1,"
+                                "\"block_total\":0}") != NULL);
+   TEST_CHECK(strstr(json, "\"dns\":{\"forward\":{") != NULL);
+   TEST_CHECK(strstr(json, "\"temporary_total\":1") != NULL);
 
    TEST_CHECK(sockd_stats_json(&stats, (time_t)130,
                                exact, (size_t)length + 1) == length);
@@ -326,7 +530,7 @@ test_http_contract(void)
    const char bad_version[] = "GET /v1/stats HTTP/2\r\n\r\n";
    const char v2[] = "GET /v2/stats HTTP/1.1\r\n\r\n";
    sockd_stats_t stats;
-   char response[4096];
+   char response[32768];
    ssize_t length;
 
    sockd_stats_init(&stats, (time_t)100);
@@ -429,7 +633,7 @@ test_unix_socket_endpoint(void)
 {
    char directory[] = "/tmp/dante-stats-test.XXXXXX";
    char path[sizeof(directory) + 16];
-   char response[4096];
+   char response[32768];
    const char request[] = "GET /v1/stats HTTP/1.0\r\n\r\n";
    struct sockaddr_un address;
    struct stat st;
@@ -514,6 +718,10 @@ main(void)
    test_request_status_taxonomy();
    test_detailed_session_updates();
    test_session_close_taxonomy();
+   test_target_connect_updates();
+   test_udp_datagram_updates();
+   test_worker_capacity_updates();
+   test_auth_acl_dns_updates();
    test_json_snapshot();
    test_http_contract();
    test_unix_socket_validation();

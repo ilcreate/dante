@@ -264,17 +264,23 @@ test_target_connect_updates(void)
    sockd_stats_add_target_connect_result(&stats, ECONNRESET, 5);
    sockd_stats_add_target_connect_result(&stats, EMFILE, 6);
    sockd_stats_add_target_connect_result(&stats, INT_MAX, 7);
+   sockd_stats_add_target_connect_result(&stats, ENETUNREACH, 1);
+   sockd_stats_add_target_connect_result(&stats, ECONNABORTED, 1);
+   sockd_stats_add_target_connect_result(&stats, ENETDOWN, 1);
+   sockd_stats_add_target_connect_result(&stats, ENFILE, 1);
+   sockd_stats_add_target_connect_result(&stats, ENOBUFS, 1);
+   sockd_stats_add_target_connect_result(&stats, ENOMEM, 1);
 
    TEST_CHECK(stats.target_connect_attempts == 7);
    TEST_CHECK(stats.target_connect_outcome[SOCKD_STATS_CONNECT_SUCCESS] == 1);
    TEST_CHECK(stats.target_connect_outcome[SOCKD_STATS_CONNECT_REFUSED] == 2);
    TEST_CHECK(stats.target_connect_outcome[SOCKD_STATS_CONNECT_TIMEOUT] == 3);
    TEST_CHECK(stats.target_connect_outcome[SOCKD_STATS_CONNECT_UNREACHABLE]
-         == 4);
-   TEST_CHECK(stats.target_connect_outcome[SOCKD_STATS_CONNECT_NETWORK_ERROR]
          == 5);
+   TEST_CHECK(stats.target_connect_outcome[SOCKD_STATS_CONNECT_NETWORK_ERROR]
+         == 7);
    TEST_CHECK(stats.target_connect_outcome[SOCKD_STATS_CONNECT_RESOURCE_ERROR]
-         == 6);
+         == 9);
    TEST_CHECK(stats.target_connect_outcome[SOCKD_STATS_CONNECT_OTHER] == 7);
 
    stats.target_connect_attempts = UINT64_MAX - 1;
@@ -309,6 +315,12 @@ test_udp_datagram_updates(void)
    sockd_stats_add_udp_forwarded(&stats, SOCKD_STATS_UDP_TARGET_TO_CLIENT, 7);
    sockd_stats_add_udp_drop(&stats, SOCKD_STATS_UDP_TARGET_TO_CLIENT,
                             SOCKD_STATS_UDP_DROP_INTERNAL_ERROR, 1);
+   sockd_stats_add_udp_received(&stats, SOCKD_STATS_UDP_DIRECTION_UNKNOWN, 1);
+   sockd_stats_add_udp_forwarded(&stats, SOCKD_STATS_UDP_DIRECTION_COUNT, 2);
+   sockd_stats_add_udp_drop(&stats, SOCKD_STATS_UDP_DIRECTION_UNKNOWN,
+                            SOCKD_STATS_UDP_DROP_OTHER, 3);
+   sockd_stats_add_udp_drop(&stats, SOCKD_STATS_UDP_DIRECTION_COUNT,
+                            SOCKD_STATS_UDP_DROP_COUNT, 4);
    sockd_stats_add_udp_drop(&stats, (sockd_stats_udp_direction_t)UINT_MAX,
                             (sockd_stats_udp_drop_t)UINT_MAX, 5);
 
@@ -327,8 +339,10 @@ test_udp_datagram_updates(void)
    TEST_CHECK(target_to_client->forwarded == 7);
    TEST_CHECK(target_to_client->dropped[SOCKD_STATS_UDP_DROP_INTERNAL_ERROR]
          == 1);
+   TEST_CHECK(stats.udp[SOCKD_STATS_UDP_DIRECTION_UNKNOWN].received == 1);
+   TEST_CHECK(stats.udp[SOCKD_STATS_UDP_DIRECTION_UNKNOWN].forwarded == 2);
    TEST_CHECK(stats.udp[SOCKD_STATS_UDP_DIRECTION_UNKNOWN]
-                       .dropped[SOCKD_STATS_UDP_DROP_OTHER] == 5);
+                       .dropped[SOCKD_STATS_UDP_DROP_OTHER] == 12);
 }
 
 static void
@@ -353,7 +367,12 @@ test_worker_capacity_updates(void)
 
    sockd_stats_add_worker_spawn_failure(&stats, PROC_IO, 2);
    sockd_stats_add_worker_spawn_failure(&stats, INT_MAX, 3);
-   TEST_CHECK(stats.workers[SOCKD_STATS_WORKER_IO].spawn_failures == 2);
+   sockd_stats_add_worker_spawn_failure(&stats, -PROC_NEGOTIATE, 4);
+   sockd_stats_add_worker_spawn_failure(&stats, -PROC_REQUEST, 5);
+   sockd_stats_add_worker_spawn_failure(&stats, -PROC_IO, 6);
+   TEST_CHECK(stats.workers[SOCKD_STATS_WORKER_NEGOTIATE].spawn_failures == 4);
+   TEST_CHECK(stats.workers[SOCKD_STATS_WORKER_REQUEST].spawn_failures == 5);
+   TEST_CHECK(stats.workers[SOCKD_STATS_WORKER_IO].spawn_failures == 8);
    TEST_CHECK(stats.workers[SOCKD_STATS_WORKER_UNKNOWN].spawn_failures == 3);
 }
 
@@ -361,6 +380,11 @@ static void
 test_auth_acl_dns_updates(void)
 {
    sockd_stats_t stats;
+   uint64_t dns_internal_error, dns_not_found, dns_system_error;
+
+   dns_internal_error = 6;
+   dns_not_found      = 3;
+   dns_system_error   = 5;
 
    sockd_stats_init(&stats, (time_t)100);
    sockd_stats_add_auth(&stats, AUTHMETHOD_NONE, 1, 2);
@@ -371,6 +395,8 @@ test_auth_acl_dns_updates(void)
    sockd_stats_add_auth(&stats, AUTHMETHOD_LDAPAUTH, 0, 7);
    sockd_stats_add_auth(&stats, AUTHMETHOD_RFC931, 1, 8);
    sockd_stats_add_auth(&stats, INT_MAX, 0, 9);
+   sockd_stats_add_auth(&stats, AUTHMETHOD_PAM_ANY, 1, 10);
+   sockd_stats_add_auth(&stats, AUTHMETHOD_PAM_ADDRESS, 0, 11);
 
    TEST_CHECK(stats.auth[SOCKD_STATS_AUTH_NONE][SOCKD_STATS_DECISION_SUCCESS]
          == 2);
@@ -379,7 +405,9 @@ test_auth_acl_dns_updates(void)
    TEST_CHECK(stats.auth[SOCKD_STATS_AUTH_GSSAPI][SOCKD_STATS_DECISION_SUCCESS]
          == 4);
    TEST_CHECK(stats.auth[SOCKD_STATS_AUTH_PAM][SOCKD_STATS_DECISION_FAILURE]
-         == 5);
+         == 16);
+   TEST_CHECK(stats.auth[SOCKD_STATS_AUTH_PAM][SOCKD_STATS_DECISION_SUCCESS]
+         == 10);
    TEST_CHECK(stats.auth[SOCKD_STATS_AUTH_BSDAUTH][SOCKD_STATS_DECISION_SUCCESS]
          == 6);
    TEST_CHECK(stats.auth[SOCKD_STATS_AUTH_LDAP][SOCKD_STATS_DECISION_FAILURE]
@@ -393,12 +421,17 @@ test_auth_acl_dns_updates(void)
    sockd_stats_add_acl(&stats, SOCKS_HOSTID, 0, 3);
    sockd_stats_add_acl(&stats, SOCKS_CONNECT, 1, 4);
    sockd_stats_add_acl(&stats, INT_MAX, 0, 5);
+   sockd_stats_add_acl(&stats, SOCKS_BOUNCETO, 1, 6);
+   sockd_stats_add_acl(&stats, SOCKS_BIND, 1, 7);
+   sockd_stats_add_acl(&stats, SOCKS_UDPASSOCIATE, 1, 8);
+   sockd_stats_add_acl(&stats, SOCKS_BINDREPLY, 1, 9);
+   sockd_stats_add_acl(&stats, SOCKS_UDPREPLY, 1, 10);
    TEST_CHECK(stats.acl[SOCKD_STATS_ACL_CLIENT][SOCKD_STATS_DECISION_SUCCESS]
-         == 2);
+         == 8);
    TEST_CHECK(stats.acl[SOCKD_STATS_ACL_HOSTID][SOCKD_STATS_DECISION_FAILURE]
          == 3);
    TEST_CHECK(stats.acl[SOCKD_STATS_ACL_SOCKS][SOCKD_STATS_DECISION_SUCCESS]
-         == 4);
+         == 38);
    TEST_CHECK(stats.acl[SOCKD_STATS_ACL_UNKNOWN][SOCKD_STATS_DECISION_FAILURE]
          == 5);
 
@@ -407,19 +440,43 @@ test_auth_acl_dns_updates(void)
    sockd_stats_add_dns(&stats, SOCKD_STATS_DNS_FORWARD, EAI_AGAIN, 4);
    sockd_stats_add_dns(&stats, SOCKD_STATS_DNS_REVERSE, EAI_SYSTEM, 5);
    sockd_stats_add_dns(&stats, SOCKD_STATS_DNS_REVERSE, EAI_BADFLAGS, 6);
+   sockd_stats_add_dns(&stats, SOCKD_STATS_DNS_OPERATION_UNKNOWN, 0, 8);
+   sockd_stats_add_dns(&stats, SOCKD_STATS_DNS_OPERATION_COUNT, INT_MAX, 9);
+#if HAVE_ERR_EAI_MEMORY
+   sockd_stats_add_dns(&stats, SOCKD_STATS_DNS_REVERSE, EAI_MEMORY, 10);
+   dns_system_error += 10;
+#endif /* HAVE_ERR_EAI_MEMORY */
+#if HAVE_ERR_EAI_FAMILY
+   sockd_stats_add_dns(&stats, SOCKD_STATS_DNS_REVERSE, EAI_FAMILY, 11);
+   dns_internal_error += 11;
+#endif /* HAVE_ERR_EAI_FAMILY */
+#if HAVE_ERR_EAI_SOCKTYPE
+   sockd_stats_add_dns(&stats, SOCKD_STATS_DNS_REVERSE, EAI_SOCKTYPE, 12);
+   dns_internal_error += 12;
+#endif /* HAVE_ERR_EAI_SOCKTYPE */
+#if HAVE_ERR_EAI_OVERFLOW
+   sockd_stats_add_dns(&stats, SOCKD_STATS_DNS_REVERSE, EAI_OVERFLOW, 13);
+   dns_internal_error += 13;
+#endif /* HAVE_ERR_EAI_OVERFLOW */
+#if HAVE_ERR_EAI_NODATA
+   sockd_stats_add_dns(&stats, SOCKD_STATS_DNS_FORWARD, EAI_NODATA, 14);
+   dns_not_found += 14;
+#endif /* HAVE_ERR_EAI_NODATA */
    sockd_stats_add_dns(&stats, (sockd_stats_dns_operation_t)UINT_MAX,
                        INT_MAX, 7);
    TEST_CHECK(stats.dns[SOCKD_STATS_DNS_FORWARD][SOCKD_STATS_DNS_SUCCESS] == 2);
    TEST_CHECK(stats.dns[SOCKD_STATS_DNS_FORWARD][SOCKD_STATS_DNS_NOT_FOUND]
-         == 3);
+         == dns_not_found);
    TEST_CHECK(stats.dns[SOCKD_STATS_DNS_FORWARD][SOCKD_STATS_DNS_TEMPORARY]
          == 4);
    TEST_CHECK(stats.dns[SOCKD_STATS_DNS_REVERSE][SOCKD_STATS_DNS_SYSTEM_ERROR]
-         == 5);
+         == dns_system_error);
    TEST_CHECK(stats.dns[SOCKD_STATS_DNS_REVERSE][SOCKD_STATS_DNS_INTERNAL_ERROR]
-         == 6);
+         == dns_internal_error);
+   TEST_CHECK(stats.dns[SOCKD_STATS_DNS_OPERATION_UNKNOWN]
+                       [SOCKD_STATS_DNS_SUCCESS] == 8);
    TEST_CHECK(stats.dns[SOCKD_STATS_DNS_OPERATION_UNKNOWN][SOCKD_STATS_DNS_OTHER]
-         == 7);
+         == 16);
 }
 
 static void

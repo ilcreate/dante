@@ -602,50 +602,72 @@ sockd_stats_add_dns(sockd_stats_t *stats,
 }
 
 #if !SOCKD_STATS_TEST
+static void
+sockd_stats_lock(int *saved_errno)
+{
+   *saved_errno = errno;
+   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+}
+
+static void
+sockd_stats_unlock(const int saved_errno)
+{
+   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+   errno = saved_errno;
+}
+
 void
 sockd_stats_update(const sockd_stat_event_t event, const uint64_t value)
 {
+   int saved_errno;
+
    if (sockscf.shmeminfo == NULL)
       return;
 
-   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_lock(&saved_errno);
    sockd_stats_add(&sockscf.shmeminfo->stats, event, value);
-   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+   sockd_stats_unlock(saved_errno);
 }
 
 void
 sockd_stats_update_negotiation(const sockd_stats_negotiation_t outcome,
                                const uint64_t value)
 {
+   int saved_errno;
+
    if (sockscf.shmeminfo == NULL)
       return;
 
-   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_lock(&saved_errno);
    sockd_stats_add_negotiation(&sockscf.shmeminfo->stats, outcome, value);
-   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+   sockd_stats_unlock(saved_errno);
 }
 
 void
 sockd_stats_update_request(const int command, const iostatus_t result,
                            const uint64_t value)
 {
+   int saved_errno;
+
    if (sockscf.shmeminfo == NULL)
       return;
 
-   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_lock(&saved_errno);
    sockd_stats_add_request(&sockscf.shmeminfo->stats, command, result, value);
-   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+   sockd_stats_unlock(saved_errno);
 }
 
 void
 sockd_stats_update_session_started(const int protocol, const uint64_t value)
 {
+   int saved_errno;
+
    if (sockscf.shmeminfo == NULL)
       return;
 
-   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_lock(&saved_errno);
    sockd_stats_add_session_started(&sockscf.shmeminfo->stats, protocol, value);
-   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+   sockd_stats_unlock(saved_errno);
 }
 
 void
@@ -653,71 +675,83 @@ sockd_stats_update_session_closed(const int protocol,
                                   const iostatus_t status,
                                   const uint64_t value)
 {
+   int saved_errno;
+
    if (sockscf.shmeminfo == NULL)
       return;
 
-   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_lock(&saved_errno);
    sockd_stats_add_session_closed(&sockscf.shmeminfo->stats,
                                   protocol,
                                   status,
                                   value);
-   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+   sockd_stats_unlock(saved_errno);
 }
 
 void
 sockd_stats_update_target_connect_attempt(const uint64_t value)
 {
+   int saved_errno;
+
    if (sockscf.shmeminfo == NULL)
       return;
-   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_lock(&saved_errno);
    sockd_stats_add_target_connect_attempt(&sockscf.shmeminfo->stats, value);
-   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+   sockd_stats_unlock(saved_errno);
 }
 
 void
 sockd_stats_update_target_connect_result(const int error,
                                          const uint64_t value)
 {
+   int saved_errno;
+
    if (sockscf.shmeminfo == NULL)
       return;
-   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_lock(&saved_errno);
    sockd_stats_add_target_connect_result(&sockscf.shmeminfo->stats,
                                          error, value);
-   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+   sockd_stats_unlock(saved_errno);
 }
 
 void
 sockd_stats_update_udp_received(const sockd_stats_udp_direction_t direction,
                                 const uint64_t value)
 {
+   int saved_errno;
+
    if (sockscf.shmeminfo == NULL)
       return;
-   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_lock(&saved_errno);
    sockd_stats_add_udp_received(&sockscf.shmeminfo->stats, direction, value);
-   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+   sockd_stats_unlock(saved_errno);
 }
 
 void
 sockd_stats_update_udp_forwarded(const sockd_stats_udp_direction_t direction,
                                  const uint64_t value)
 {
+   int saved_errno;
+
    if (sockscf.shmeminfo == NULL)
       return;
-   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_lock(&saved_errno);
    sockd_stats_add_udp_forwarded(&sockscf.shmeminfo->stats, direction, value);
-   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+   sockd_stats_unlock(saved_errno);
 }
 
 void
 sockd_stats_update_udp_receive_error(
    const sockd_stats_udp_direction_t direction, const uint64_t value)
 {
+   int saved_errno;
+
    if (sockscf.shmeminfo == NULL)
       return;
-   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_lock(&saved_errno);
    sockd_stats_add_udp_receive_error(&sockscf.shmeminfo->stats,
                                      direction, value);
-   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+   sockd_stats_unlock(saved_errno);
 }
 
 void
@@ -725,11 +759,13 @@ sockd_stats_update_udp_drop(const sockd_stats_udp_direction_t direction,
                             const sockd_stats_udp_drop_t reason,
                             const uint64_t value)
 {
+   int saved_errno;
+
    if (sockscf.shmeminfo == NULL)
       return;
-   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_lock(&saved_errno);
    sockd_stats_add_udp_drop(&sockscf.shmeminfo->stats, direction, reason, value);
-   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+   sockd_stats_unlock(saved_errno);
 }
 
 void
@@ -737,55 +773,65 @@ sockd_stats_update_worker_capacity(const int type, const uint64_t processes,
                                    const uint64_t slots_total,
                                    const uint64_t slots_free)
 {
+   int saved_errno;
+
    if (sockscf.shmeminfo == NULL)
       return;
-   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_lock(&saved_errno);
    sockd_stats_set_worker_capacity(&sockscf.shmeminfo->stats, type,
                                    processes, slots_total, slots_free);
-   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+   sockd_stats_unlock(saved_errno);
 }
 
 void
 sockd_stats_update_worker_spawn_failure(const int type, const uint64_t value)
 {
+   int saved_errno;
+
    if (sockscf.shmeminfo == NULL)
       return;
-   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_lock(&saved_errno);
    sockd_stats_add_worker_spawn_failure(&sockscf.shmeminfo->stats, type, value);
-   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+   sockd_stats_unlock(saved_errno);
 }
 
 void
 sockd_stats_update_auth(const int method, const int success,
                         const uint64_t value)
 {
+   int saved_errno;
+
    if (sockscf.shmeminfo == NULL)
       return;
-   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_lock(&saved_errno);
    sockd_stats_add_auth(&sockscf.shmeminfo->stats, method, success, value);
-   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+   sockd_stats_unlock(saved_errno);
 }
 
 void
 sockd_stats_update_acl(const int command, const int permit,
                        const uint64_t value)
 {
+   int saved_errno;
+
    if (sockscf.shmeminfo == NULL)
       return;
-   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_lock(&saved_errno);
    sockd_stats_add_acl(&sockscf.shmeminfo->stats, command, permit, value);
-   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+   sockd_stats_unlock(saved_errno);
 }
 
 void
 sockd_stats_update_dns(const sockd_stats_dns_operation_t operation,
                        const int result, const uint64_t value)
 {
+   int saved_errno;
+
    if (sockscf.shmeminfo == NULL)
       return;
-   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_lock(&saved_errno);
    sockd_stats_add_dns(&sockscf.shmeminfo->stats, operation, result, value);
-   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+   sockd_stats_unlock(saved_errno);
 }
 
 void
@@ -795,32 +841,35 @@ sockd_stats_update_io(const uint64_t client_read,
                       const uint64_t target_written)
 {
    sockd_stats_t *stats;
+   int saved_errno;
 
    if (sockscf.shmeminfo == NULL
    ||  (client_read == 0 && client_written == 0
      && target_read == 0 && target_written == 0))
       return;
 
-   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_lock(&saved_errno);
    stats = &sockscf.shmeminfo->stats;
    sockd_stats_add(stats, SOCKD_STAT_CLIENT_READ_BYTES, client_read);
    sockd_stats_add(stats, SOCKD_STAT_CLIENT_WRITTEN_BYTES, client_written);
    sockd_stats_add(stats, SOCKD_STAT_TARGET_READ_BYTES, target_read);
    sockd_stats_add(stats, SOCKD_STAT_TARGET_WRITTEN_BYTES, target_written);
-   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+   sockd_stats_unlock(saved_errno);
 }
 
 void
 sockd_stats_snapshot(sockd_stats_t *stats)
 {
+   int saved_errno;
+
    if (sockscf.shmeminfo == NULL) {
       sockd_stats_init(stats, (time_t)0);
       return;
    }
 
-   socks_lock(sockscf.shmemfd, (off_t)0, 1, 1, 1);
+   sockd_stats_lock(&saved_errno);
    *stats = sockscf.shmeminfo->stats;
-   socks_unlock(sockscf.shmemfd, (off_t)0, 1);
+   sockd_stats_unlock(saved_errno);
 }
 #endif /* !SOCKD_STATS_TEST */
 

@@ -989,6 +989,10 @@ io_udp_client2target(control, client, twotargets, cauth, state,
       w = -1;
 
    if (iostatus != IO_NOERROR || !permit) {
+      if (iostatus != IO_NOERROR && w >= 0)
+         sockd_stats_update_udp_drop(SOCKD_STATS_UDP_CLIENT_TO_TARGET,
+                                     SOCKD_STATS_UDP_DROP_SEND_ERROR, 1);
+
       iolog(packetrule,
             state,
             IOOP(!permit, iostatus),
@@ -1390,6 +1394,10 @@ io_udp_target2client(control, client, twotargets, state,
    }
 
    if (iostatus != IO_NOERROR) {
+      if (w >= 0)
+         sockd_stats_update_udp_drop(SOCKD_STATS_UDP_TARGET_TO_CLIENT,
+                                     SOCKD_STATS_UDP_DROP_SEND_ERROR, 1);
+
       iolog(packetrule,
             state,
             IOOP(!permit, iostatus),

@@ -1766,6 +1766,8 @@ dorequest(mother, request, clientudpaddr, weclosedfirst, emsg, emsglen)
                                 buf,
                                 sizeof(buf));
    serverchain_errno = errno;
+   if (serverchain_rc != 0 && serverchain_errno == 0)
+      serverchain_errno = EIO;
    if (request->req.command == SOCKS_CONNECT
    &&  io.state.proxychain.proxyprotocol != PROXY_DIRECT) {
       sockd_stats_update_target_connect_attempt(1);

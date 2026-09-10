@@ -1,4 +1,4 @@
-Last verified against implementation commit: 35a8cd4
+Last verified against implementation commit: 47fe4ae
 
 # Statistics API testing
 
@@ -56,8 +56,8 @@ all stats API tests passed
 
 ## Automated coverage
 
-The revision 3 implementation was last measured at 94.18% line coverage,
-73.61% region coverage, 97.73% function coverage, and 83.90% branch coverage
+The revision 4 implementation was last measured at 94.09% line coverage,
+73.91% region coverage, 97.87% function coverage, and 82.77% branch coverage
 for `sockd/statistics.c`. The lower region percentage includes production-only
 shared-memory wrappers and system-error branches excluded from the standalone
 test build.
@@ -74,18 +74,18 @@ cc \
   -Iinclude -Ilib -Ilibscompat \
   -fprofile-instr-generate -fcoverage-mapping \
   sockd/tests/stats_api_test.c sockd/statistics.c \
-  -o /tmp/dante-stats-api-r3.coverage.bin
+  -o /tmp/dante-stats-api-r4-coverage.bin
 
-LLVM_PROFILE_FILE=/tmp/dante-stats-api-r3.profraw \
-  /tmp/dante-stats-api-r3.coverage.bin
+LLVM_PROFILE_FILE=/tmp/dante-stats-api-r4.profraw \
+  /tmp/dante-stats-api-r4-coverage.bin
 
 xcrun llvm-profdata merge -sparse \
-  /tmp/dante-stats-api-r3.profraw \
-  -o /tmp/dante-stats-api-r3.profdata
+  /tmp/dante-stats-api-r4.profraw \
+  -o /tmp/dante-stats-api-r4.profdata
 
 xcrun llvm-cov report \
-  /tmp/dante-stats-api-r3.coverage.bin \
-  -instr-profile=/tmp/dante-stats-api-r3.profdata \
+  /tmp/dante-stats-api-r4-coverage.bin \
+  -instr-profile=/tmp/dante-stats-api-r4.profdata \
   sockd/statistics.c
 ```
 
@@ -107,15 +107,15 @@ cc -std=c17 \
   -DSOCKS_SERVER=1 \
   -Iinclude -Ilib -Ilibscompat \
   sockd/tests/stats_api_test.c sockd/statistics.c \
-  -o /tmp/dante-stats-api-strict.bin
+  -o /tmp/dante-stats-api-r4-strict.bin
 
-/tmp/dante-stats-api-strict.bin
+/tmp/dante-stats-api-r4-strict.bin
 ```
 
 The repository still reports pre-existing diagnostics for legacy K&R
 prototype/unused parameters in `sockd_check_ipclatency`, invalid UTF-8 in old
 header comments, and configuration macros omitted from this standalone command
-under `-Wundef`. Revision 3 adds no new diagnostic in this check.
+under `-Wundef`. Revision 4 adds no new diagnostic in this check.
 
 ## Test inventory
 
@@ -132,9 +132,11 @@ under `-Wundef`. Revision 3 adds no new diagnostic in this check.
 | UDP taxonomy | Both directions, receive/forward/error counters, every drop reason, unknown normalization |
 | Worker capacity | Process/slot gauges, free-to-total clamping, busy derivation, signed process types, spawn failures |
 | Auth/ACL/DNS | Every bounded method/phase/operation/result family and fallback bucket |
+| Latency histograms | All seven phases, exact finite bounds, cumulative buckets, zero and above-maximum durations |
+| Latency validation | Null/missing timestamps, invalid microseconds, reversed intervals, signed negative times, and overflow-safe saturation |
 | Gauge safety | Closing more sessions than active clamps the gauge at zero |
 | Counter safety | Addition saturates at `UINT64_MAX` |
-| JSON | Metadata, revision 3 details, representative matrices, string length, clock rollback behavior |
+| JSON | Metadata, revision 4 details, representative matrices and histograms, string length, clock rollback behavior |
 | Buffer bounds | Exact-fit-minus-NUL, zero-size, and small JSON/HTTP buffers return `ENOSPC` |
 | HTTP success | `GET /v1/stats`, response headers, and JSON body |
 | HTTP errors | 400 malformed/incomplete/version, 404 path, 405 method |
@@ -159,20 +161,26 @@ Use a minimal local configuration with a non-production port and run:
 From another terminal:
 
 ```sh
-curl --silent --show-error \
+curl --noproxy "*" --silent --show-error \
   --unix-socket /tmp/dante-stats-e2e.sock \
   http://localhost/v1/stats
 ```
 
 Expected observations:
 
-- HTTP client receives schema version 1, revision 3 JSON;
+- HTTP client receives schema version 1, revision 4 JSON;
 - repeated requests receive independent responses;
 - `started_at` stays constant while `snapshot_time` and uptime advance;
 - a TCP connection to the configured SOCKS listener increments
   `client_connections_accepted_total`;
 - closing without a valid SOCKS negotiation increments
   `negotiation_failures_total` and one detailed negotiation outcome;
+- completed SOCKS flows increment the matching negotiation, request,
+  target-connect, first-I/O, session, and authentication histograms;
+- a hostname lookup increments `dns_resolver.count`, while a cache hit does
+  not create another resolver observation;
+- every finite bucket array is nondecreasing and its last entry is at most
+  `count`;
 - stopping `sockd` removes the Unix socket path.
 
 Do not use a production listener or configuration for this check.
@@ -198,12 +206,15 @@ handled by either mother contributes to the same returned counters.
 These are requirements for a future exporter and are not current tests:
 
 - schema version 1 is accepted, lifecycle details require revision 2,
-  operational details require revision 3, and unknown versions fail explicitly;
+  operational details require revision 3, latency histograms require revision
+  4, and unknown versions fail explicitly;
 - every aggregate and detailed JSON counter maps to a Prometheus
   `Counter`-compatible sample without exporter-side accumulation;
 - global and per-protocol active sessions map to gauges;
-- all 157 fixed detailed numeric series are exported at zero when absent,
+- all 297 fixed detailed numeric series are exported at zero when absent,
   without discovering labels dynamically;
+- latency bounds and sums are converted from microseconds to seconds, finite
+  buckets are not accumulated again, and `count` supplies the `+Inf` bucket;
 - server restart is observed as a counter reset and changed `started_at`;
 - timeouts, connection refusal, malformed JSON, non-200 responses, short reads,
   and content-length mismatches make the scrape fail without stale success;
@@ -217,6 +228,7 @@ These are requirements for a future exporter and are not current tests:
 - accepted descriptors above `FD_SETSIZE` and the fixed stack `fd_set` path;
 - API connection flooding and repeated one-second slow-client waits;
 - shared-lock contention under high TCP/UDP packet rates;
+- shared-lock contention from lifecycle latency observations;
 - abnormal target-connect worker death leaving attempts without outcomes;
 - timing lag between worker slot changes and the next capacity scan;
 - peer UID validation;

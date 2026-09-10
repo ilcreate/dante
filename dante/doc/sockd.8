@@ -130,7 +130,7 @@ domain stream socket.  The versioned endpoint
 .B GET /v1/stats
 returns a JSON snapshot containing server and schema versions, timestamps,
 uptime, process-shared counters, and gauges.  The current response uses schema
-version 1, revision 3.  The connection is closed after each response.  Other
+version 1, revision 4.  The connection is closed after each response.  Other
 paths return 404 and methods other than GET return 405.
 .PP
 The counters cover accepted and pre-negotiation dropped clients, negotiation
@@ -143,6 +143,12 @@ authentication results, ACL decisions, and DNS backend-query results.  These
 dimensions are fixed and include unknown/other buckets.  Active sessions and
 worker capacity are gauges.  Counters remain available across worker rotation
 and configuration reload, but reset when the server is restarted.
+.PP
+Revision 4 adds fixed cumulative latency histograms for negotiation, request
+processing, target connection, first I/O, full accepted-to-close session,
+resolver backend, and executed authentication intervals.  Bounds and sums are
+reported in integer microseconds; each histogram count is its implicit
+infinite bucket.  Incomplete or invalid intervals are omitted.
 .PP
 The compatibility field
 .B sessions_established_total

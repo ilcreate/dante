@@ -1,9 +1,9 @@
-Last verified against implementation commit: 35a8cd4
+Last verified against implementation commit: 47fe4ae
 
 # Statistics API metric dictionary
 
 This document is the canonical semantic dictionary for `GET /v1/stats` at
-schema version 1, revision 3. The API exposes raw cumulative values. A future
+schema version 1, revision 4. The API exposes raw cumulative values. A future
 Prometheus exporter should translate them without accumulating them again.
 
 ## Compatibility
@@ -12,6 +12,7 @@ Prometheus exporter should translate them without accumulating them again.
 - `schema_revision >= 2` provides the original detailed lifecycle families.
 - `schema_revision >= 3` provides target-connect, UDP, worker, authentication,
   ACL, and DNS families.
+- `schema_revision >= 4` provides the seven fixed latency histograms.
 - Consumers of only the original aggregate fields may ignore
   `schema_revision` and unknown JSON members.
 - Consumers requiring detailed statistics should require
@@ -300,12 +301,61 @@ Counters increment only when Dante calls the resolver backend after its retry
 logic; cache hits are excluded. The JSON never exposes queried names, returned
 addresses, or raw `EAI_*` values.
 
+## Latency histograms
+
+Revision 4 exposes seven fixed histograms under `details.latency`. All values
+are process-lifetime cumulative values measured with Dante's monotonic clock.
+Durations and finite bucket bounds are integer microseconds.
+
+```text
+details.latency.unit
+details.latency.bucket_upper_bounds
+details.latency.<phase>.count
+details.latency.<phase>.sum_microseconds
+details.latency.<phase>.cumulative_bucket_counts
+```
+
+The shared finite upper bounds are:
+
+```text
+100, 500, 1000, 5000, 10000, 25000, 50000, 100000, 250000,
+500000, 1000000, 2500000, 5000000, 10000000, 30000000,
+60000000, 300000000, 3600000000
+```
+
+Each `cumulative_bucket_counts` array has exactly 18 entries paired by index
+with `bucket_upper_bounds`. A duration equal to a bound is included in that
+bucket. `count` is the implicit Prometheus `+Inf` bucket, so a duration above
+the largest finite bound increments `count` and `sum_microseconds` but no
+finite bucket. Counters and sums saturate at `UINT64_MAX`.
+
+| Phase | Measured interval | Suggested Prometheus histogram |
+|---|---|---|
+| `negotiation` | negotiation start to terminal negotiation completion | `dante_negotiation_duration_seconds` |
+| `request` | negotiation end to completion of `dorequest()` | `dante_request_duration_seconds` |
+| `target_connect` | immediately before direct connect or upstream `serverchain()` to its synchronous or deferred terminal outcome | `dante_target_connect_duration_seconds` |
+| `first_io` | session establishment to first observed client/target I/O | `dante_time_to_first_io_seconds` |
+| `session` | client acceptance to entry into `io_delete()` | `dante_session_duration_seconds` |
+| `dns_resolver` | resolver backend lookup, including the existing resource-retry path; cache hits excluded | `dante_dns_resolver_duration_seconds` |
+| `authentication` | authentication check executed by `accesscheck()`; cached early returns excluded | `dante_authentication_duration_seconds` |
+
+An exporter must divide bounds and sums by `1000000` to produce seconds,
+export each finite cumulative value directly as a histogram bucket, emit an
+additional `le="+Inf"` bucket equal to `count`, and expose `count` and the
+converted sum. It must not re-cumulate the bucket array.
+
+An operation is omitted when either timestamp is missing or invalid, the end
+precedes the start, or the process dies before reaching the observation hook.
+Such cases are not recorded as zero latency. Equal valid timestamps record a
+zero-duration observation.
+
 ## Cardinality and privacy contract
 
-Revision 3 contains 157 fixed detailed numeric series: the 57 revision 2
-series plus eight target-connect values, 30 UDP values, 20 worker values, 16
-authentication values, eight ACL values, and 18 DNS values. An exporter can
-initialize all of them to zero without discovering labels dynamically.
+Revision 4 contains 297 fixed detailed numeric series: the 157 revision 3
+series plus 140 latency values from seven histograms, each containing 18
+finite buckets, one count, and one sum. The shared bucket-bound array and unit
+string are metadata, not metric series. An exporter can initialize all numeric
+series to zero without discovering labels dynamically.
 
 Future revisions must not use these values as labels:
 
@@ -330,5 +380,11 @@ buckets rather than becoming new keys.
   abnormal worker death.
 - Worker capacity is eventually updated by the child-management scan, not an
   instantaneous scheduler value.
+- A histogram update and its related outcome/lifecycle counter can use
+  separate lock acquisitions. A concurrent scrape can therefore temporarily
+  observe one without the other even though each individual structure copy is
+  coherent.
+- Histograms omit incomplete or invalid-clock intervals. Saturated counts or
+  sums also make derived averages and quantiles lower-confidence.
 - Kernel backlog drops, firewall drops, retransmissions, and on-wire byte
   counts require operating-system telemetry outside this API.

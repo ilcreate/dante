@@ -70,10 +70,19 @@ Stop with `Ctrl-C`.
 ## Query JSON API
 
 ```sh
-curl --silent --show-error \
+curl --noproxy "*" --silent --show-error \
   --unix-socket /tmp/dante-stats.sock \
   http://localhost/v1/stats |
 jq .
+```
+
+Show only latency histograms:
+
+```sh
+curl --noproxy "*" --silent --show-error \
+  --unix-socket /tmp/dante-stats.sock \
+  http://localhost/v1/stats |
+jq '.details.latency'
 ```
 
 ## Check counter updates
@@ -108,12 +117,12 @@ curl --noproxy "" \
 
 ## JSON response
 
-`GET /v1/stats` returns schema version 1, revision 3:
+`GET /v1/stats` returns schema version 1, revision 4:
 
 ```json
 {
   "schema_version": 1,
-  "schema_revision": 3,
+  "schema_revision": 4,
   "server_version": "1.4.4",
   "snapshot_time": 1788982182,
   "started_at": 1788982152,
@@ -318,9 +327,22 @@ curl --noproxy "" \
         "temporary_total": 0, "system_error_total": 0,
         "internal_error_total": 0, "other_total": 0
       }
+    },
+    "latency": {
+      "unit": "microseconds",
+      "bucket_upper_bounds": [100, 500, 1000, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000, 2500000, 5000000, 10000000, 30000000, 60000000, 300000000, 3600000000],
+      "negotiation": {"count": 0, "sum_microseconds": 0, "cumulative_bucket_counts": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]},
+      "request": {"count": 0, "sum_microseconds": 0, "cumulative_bucket_counts": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]},
+      "target_connect": {"count": 0, "sum_microseconds": 0, "cumulative_bucket_counts": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]},
+      "first_io": {"count": 0, "sum_microseconds": 0, "cumulative_bucket_counts": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]},
+      "session": {"count": 0, "sum_microseconds": 0, "cumulative_bucket_counts": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]},
+      "dns_resolver": {"count": 0, "sum_microseconds": 0, "cumulative_bucket_counts": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]},
+      "authentication": {"count": 0, "sum_microseconds": 0, "cumulative_bucket_counts": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}
     }
   }
 }
 ```
 
-Timestamps and statistic values change at runtime.
+Timestamps and statistic values change at runtime. Latency bucket counts are
+already cumulative. `count` is the implicit `+Inf` bucket; bounds and sums are
+microseconds.

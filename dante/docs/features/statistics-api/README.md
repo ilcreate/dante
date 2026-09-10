@@ -1,4 +1,4 @@
-Last verified against implementation commit: 35a8cd4
+Last verified against implementation commit: 47fe4ae
 
 # Dante statistics API
 
@@ -51,20 +51,19 @@ One request is served per connection. The implementation reads at most 4096
 bytes once and requires the request line to fit within 511 bytes. It waits up
 to one second for the first readable data.
 
-## JSON schema version 1, revision 3
+## JSON schema version 1, revision 4
 
-Revision 3 additively extends revision 2. It preserves every existing path and
-adds fixed-cardinality target-connect, UDP, worker, authentication, ACL, and
-DNS objects. Existing consumers can ignore unknown members. Consumers should
-check `schema_version == 1` and require revision 2 or 3 according to the
-families they consume.
+Revision 4 additively extends revision 3. It preserves every existing path and
+adds seven fixed-cardinality latency histograms. Existing consumers can ignore
+unknown members. Consumers should check `schema_version == 1` and require the
+minimum revision for the families they consume.
 
 A successful response has this shape:
 
 ```json
 {
   "schema_version": 1,
-  "schema_revision": 3,
+  "schema_revision": 4,
   "server_version": "1.4.4",
   "snapshot_time": 1788897413,
   "started_at": 1788897390,
@@ -207,14 +206,26 @@ A successful response has this shape:
       "forward": {"success_total": 3, "not_found_total": 0, "temporary_total": 0, "system_error_total": 0, "internal_error_total": 0, "other_total": 0},
       "reverse": {"success_total": 2, "not_found_total": 0, "temporary_total": 0, "system_error_total": 0, "internal_error_total": 0, "other_total": 0},
       "unknown": {"success_total": 0, "not_found_total": 0, "temporary_total": 0, "system_error_total": 0, "internal_error_total": 0, "other_total": 0}
+    },
+    "latency": {
+      "unit": "microseconds",
+      "bucket_upper_bounds": [100, 500, 1000, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000, 2500000, 5000000, 10000000, 30000000, 60000000, 300000000, 3600000000],
+      "negotiation": {"count": 12, "sum_microseconds": 8400, "cumulative_bucket_counts": [0, 2, 8, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12]},
+      "request": {"count": 10, "sum_microseconds": 12500, "cumulative_bucket_counts": [0, 1, 5, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10]},
+      "target_connect": {"count": 10, "sum_microseconds": 31000, "cumulative_bucket_counts": [0, 0, 2, 8, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10]},
+      "first_io": {"count": 8, "sum_microseconds": 6400, "cumulative_bucket_counts": [0, 2, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8]},
+      "session": {"count": 8, "sum_microseconds": 2600000, "cumulative_bucket_counts": [0, 0, 0, 0, 0, 1, 2, 3, 5, 6, 7, 8, 8, 8, 8, 8, 8, 8]},
+      "dns_resolver": {"count": 5, "sum_microseconds": 7200, "cumulative_bucket_counts": [0, 0, 2, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5]},
+      "authentication": {"count": 12, "sum_microseconds": 900, "cumulative_bucket_counts": [8, 11, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12]}
     }
   }
 }
 ```
 
-All timestamps and durations are integer seconds. `snapshot_time` and
-`started_at` use the system wall clock. If the clock is earlier than
-`started_at`, `uptime_seconds` is reported as zero.
+`snapshot_time`, `started_at`, and `uptime_seconds` are integer seconds based
+on the system wall clock. Latency values are integer microseconds measured
+from Dante's monotonic clock. If the wall clock is earlier than `started_at`,
+`uptime_seconds` is reported as zero.
 
 ### Counter semantics
 
@@ -257,7 +268,10 @@ Revision 2 exposes 57 fixed detailed numeric series:
 Revision 3 adds 100 fixed series: target-connect attempts/results, UDP
 datagrams/errors/drops by direction, worker capacity and spawn failures,
 authentication outcomes, ACL decisions, and DNS backend-query outcomes. The
-complete semantics and exporter mappings are in [`metrics.md`](metrics.md).
+revision 4 latency families add 140 series (seven histograms, each with 18
+finite buckets, `count`, and `sum`) for 297 fixed detailed numeric series in
+total. The complete semantics and exporter mappings are in
+[`metrics.md`](metrics.md).
 
 Unknown internal values are normalized into bounded `unknown` or `other`
 buckets. The full field semantics and exporter mapping are defined in
@@ -284,7 +298,7 @@ The exporter should:
    or connection close;
 3. require HTTP 200, `schema_version == 1`, and the minimum schema revision
    required by the selected families (`2` for lifecycle details, `3` for the
-   operational families);
+   operational families, `4` for latency histograms);
 4. expose Dante counter values directly instead of accumulating them again;
 5. let Prometheus handle counter resets, using `started_at` as supporting reset
    context;
@@ -326,7 +340,8 @@ the values returned by Dante directly, not maintain a second accumulator.
 - The monitor serves one connection synchronously, so a slow same-UID client
   can delay monitor work.
 - Statistics updates take a global process-shared lock on the I/O hot path,
-  including per-datagram revision 3 updates and when `-S` is not configured.
+  including per-datagram revision 3 and per-lifecycle revision 4 updates, and
+  when `-S` is not configured.
 - Worker gauges are periodic snapshots; target attempts can exceed outcomes
   while nonblocking connects are in flight.
 - `stats_wait_readable()` currently uses a fixed stack `fd_set`; high-descriptor

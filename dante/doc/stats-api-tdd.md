@@ -3,6 +3,8 @@ Latest v1 revision 2 cycle verified against commit:
 11448e34dc558a425748f56c832c366baa5051c2
 Latest v1 revision 3 cycle verified against commit:
 35a8cd405789be5bedcd870ca52f2a9a6528500b
+Latest v1 revision 4 cycle verified against commit:
+47fe4aeba12c59dc770da74d9516cd741302392a
 
 # Statistics API TDD evidence
 
@@ -168,3 +170,62 @@ The revision 3 contract contains 100 new fixed numeric series and 157 detailed
 series in total. Target attempts may temporarily exceed outcomes while a
 nonblocking connect is pending. UDP receive errors count failed receive calls,
 worker capacity is a scan-time snapshot, and resolver cache hits are excluded.
+
+## Version 1 revision 4 latency extension
+
+### Scope
+
+This cycle added seven fixed cumulative latency histograms for negotiation,
+request processing, target connect, first I/O, full accepted-to-close session,
+resolver backend, and executed authentication intervals. Each histogram has
+18 finite microsecond buckets, a count, and a saturating microsecond sum. The
+revision adds 140 fixed numeric series, bringing the detailed total to 297.
+
+### RED evidence
+
+The test-only checkpoint is commit
+`4957bf2ee26760385777e0f1a8bf509cb18b9dc7`. The feature runner failed at
+compile time because the revision 4 schema constant, latency taxonomy,
+histogram storage, bounds, and observation functions did not exist. Tests were
+therefore committed before production code.
+
+### GREEN evidence
+
+The implementation checkpoint is commit
+`dd4539b2b20d4880db1aee1787d7acd90cd14c4a`. It added overflow-safe duration
+conversion, saturating cumulative histograms, JSON serialization, and the
+negotiation, request, target-connect, first-I/O, session, DNS, and
+authentication producer hooks. The feature runner and full server-only build
+passed.
+
+### Refactor and final verification
+
+The refactor checkpoint is commit
+`47fe4aeba12c59dc770da74d9516cd741302392a`. It aligned session duration with
+the existing full accepted-to-close lifecycle and made the implicit `+Inf`
+meaning of `count` explicit.
+
+| Check | Result |
+|---|---|
+| Feature unit and Unix-socket integration runner | Passed |
+| Full server-only build (`make -j2`) | Passed; only existing legacy C/GSSAPI warnings |
+| Strict C17 compile and test run | Passed; only pre-existing repository diagnostics |
+| AddressSanitizer and UndefinedBehaviorSanitizer | Passed with no findings |
+| `sockd/statistics.c` line coverage | 94.09% |
+| Function coverage | 97.87% |
+| Branch coverage | 82.77% |
+| Region coverage | 73.91%; production-only shared wrappers remain excluded from the standalone build |
+
+The live revision 4 check returned valid JSON on repeated requests and
+observed all seven histogram families. A hostname request recorded one
+successful DNS backend query and one resolver duration. SOCKS negotiation and
+target connection reached a local HTTP server, which logged the request and a
+200 response. On this macOS host, Dante's existing descriptor-passing path
+reset `SO_RCVBUF` to zero, so the client saw an empty response after successful
+upstream handling; this legacy platform limitation was logged by Dante and was
+not introduced by the latency change. The API socket was removed on shutdown.
+
+Tests cover inclusive exact boundaries, cumulative bucket ordering, zero and
+above-largest durations, invalid/missing/reversed timestamps, signed-time and
+arithmetic overflow cases, saturating count/sum/buckets, JSON shape, and the
+existing HTTP/Unix-socket contract.

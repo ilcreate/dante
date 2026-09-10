@@ -1,4 +1,4 @@
-Last verified against implementation commit: 35a8cd4
+Last verified against implementation commit: 47fe4ae
 
 # Statistics API architecture
 
@@ -35,6 +35,8 @@ The mother and worker processes call the API declared in `include/sockd.h`:
 - `sockd_stats_update_io()` applies up to four byte deltas under one lock;
 - revision 3 typed wrappers record target-connect, UDP, worker, auth, ACL, and
   DNS events without exposing raw identities, addresses, errors, or rule IDs;
+- revision 4 latency wrappers validate monotonic timestamp pairs and update
+  fixed cumulative histograms;
 - the corresponding `sockd_stats_add*()` functions contain pure transition
 rules used by production wrappers and standalone tests.
 
@@ -59,6 +61,9 @@ Producer locations are:
 | Mother | `sockd/sockd_child.c`, `childcheck()` | non-retiring worker capacity and creation failures |
 | Auth/rules | `sockd/accesscheck.c`, `sockd/rule.c` | auth results and ACL pass/block decisions |
 | Resolver | `lib/hostcache.c` | forward/reverse backend query results; cache hits excluded |
+| Negotiation/request | `sockd/sockd_negotiate.c`, `sockd/sockd_request.c` | negotiation, request, and synchronous target-connect durations |
+| I/O | `sockd/sockd_io.c` | deferred target-connect, first-I/O, and full accepted-to-close session durations |
+| Auth/resolver | `sockd/accesscheck.c`, `lib/hostcache.c` | executed authentication and resolver-backend durations; cached returns excluded |
 
 Negotiation success is recorded only after successful handoff to the mother,
 so temporary handoff retries do not double-count it. Request outcome is
@@ -140,10 +145,16 @@ Counter mutation is saturating. Global and per-protocol active values are
 derived-by-events gauges, not scans of live session objects. An abnormal worker
 exit can therefore leave them stale until server restart.
 
+Revision 4 stores seven fixed latency histograms in the same shared structure.
+Each histogram contains a saturating count, saturating microsecond sum, and 18
+cumulative finite buckets. Bounds are compiled into the server and serialized
+once as shared metadata. Invalid, reversed, or incomplete timestamp pairs do
+not mutate the histogram.
+
 ## Compatibility model
 
-The wire schema stays at version 1. Revision 3 additively extends the revision
-2 `details` object; every earlier path and meaning remains present. This
+The wire schema stays at version 1. Revision 4 additively extends the revision
+3 `details` object; every earlier path and meaning remains present. This
 lets older clients ignore new members while detailed consumers can require a
 minimum revision. Internal enum values never become dynamic JSON keys:
 unrecognized commands/protocols map to `unknown`, and unrecognized results map
@@ -152,6 +163,8 @@ to `other`.
 The legacy `sessions_established_total` name intentionally keeps its existing
 admission-time meaning. Revision 3 records true nonblocking CONNECT completion
 later in the I/O path instead of changing the compatibility field.
+Revision 4 measures the corresponding terminal intervals without changing any
+outcome-counter semantics.
 
 ## Future exporter boundary
 
@@ -182,6 +195,9 @@ and synchronization internals.
 - Session active gauges are not reconciled after abnormal worker death.
 - UDP events add shared-lock acquisitions on the packet path and need
   workload-specific contention testing.
+- Each latency observation adds another shared-lock acquisition at a lifecycle
+  boundary; authentication and resolver-heavy workloads need contention
+  testing before production rollout.
 - Target-connect attempts and outcomes can differ while connects are in flight
   or after abnormal worker death.
 - Worker capacity is sampled by `childcheck()`, not at every slot transition.

@@ -816,7 +816,7 @@ test_json_snapshot(void)
    TEST_CHECK(strstr(json, "\"client_connections_accepted_total\":7") != NULL);
    TEST_CHECK(strstr(json, "\"sessions_established_total\":3") != NULL);
    TEST_CHECK(strstr(json, "\"sessions_active\":2") != NULL);
-   TEST_CHECK(strstr(json, "\"client_read_bytes_total\":123") != NULL);
+   TEST_CHECK(strstr(json, "\"client_read_bytes_total\":134") != NULL);
    TEST_CHECK(strstr(json, "\"details\":{") != NULL);
    TEST_CHECK(strstr(json, "\"negotiations\":{") != NULL);
    TEST_CHECK(strstr(json, "\"timeout_total\":1") != NULL);
@@ -915,7 +915,7 @@ test_http_contract(void)
    const char bad_version[] = "GET /v1/stats HTTP/2\r\n\r\n";
    const char v2[] = "GET /v2/stats HTTP/1.1\r\n\r\n";
    sockd_stats_t stats;
-   char response[32768];
+   char response[65536];
    ssize_t length;
 
    sockd_stats_init(&stats, (time_t)100);
@@ -972,6 +972,16 @@ test_http_contract(void)
                                    &stats, (time_t)130,
                                    response, 16) == -1);
    TEST_CHECK(errno == ENOSPC);
+
+   memset(&stats, 0xff, sizeof(stats));
+   stats.schema_version = SOCKD_STATS_SCHEMA_VERSION;
+   stats.schema_revision = SOCKD_STATS_SCHEMA_REVISION;
+   stats.started_at = (time_t)100;
+   length = sockd_stats_http_response(get, sizeof(get) - 1,
+                                      &stats, (time_t)130,
+                                      response, sizeof(response));
+   TEST_CHECK(length > 0);
+   TEST_CHECK(strncmp(response, "HTTP/1.1 200 OK\r\n", 17) == 0);
 }
 
 static void

@@ -209,7 +209,8 @@ io_udp_client2target(control, client, twotargets, cauth, state,
       }
    }
 
-   sockd_stats_update_udp_received(SOCKD_STATS_UDP_CLIENT_TO_TARGET, 1);
+   sockd_stats_update_udp_received(SOCKD_STATS_UDP_CLIENT_TO_TARGET,
+                                   (uint64_t)r);
    iostatus = io_packet_received(&recvflags, r, &from, &client->laddr);
 
    if (iostatus != IO_NOERROR) {
@@ -959,6 +960,15 @@ io_udp_client2target(control, client, twotargets, cauth, state,
                                    emsg,
                                    sizeof(emsg));
 
+         if (w == 0 && payloadlen != 0)
+            sockd_stats_update_io_outcome(SOCKS_UDP,
+                                          SOCKD_STATS_IO_SIDE_TARGET,
+                                          SOCKD_STATS_IO_ZERO_WRITE, 1);
+         else if (w > 0 && (size_t)w < payloadlen)
+            sockd_stats_update_io_outcome(SOCKS_UDP,
+                                          SOCKD_STATS_IO_SIDE_TARGET,
+                                          SOCKD_STATS_IO_PARTIAL_WRITE, 1);
+
          *bwused = w;
 
          target->target_written.bytes   += sendtoflags.tosocket;
@@ -1145,7 +1155,8 @@ io_udp_target2client(control, client, twotargets, state,
       }
    }
 
-   sockd_stats_update_udp_received(SOCKD_STATS_UDP_TARGET_TO_CLIENT, 1);
+   sockd_stats_update_udp_received(SOCKD_STATS_UDP_TARGET_TO_CLIENT,
+                                   (uint64_t)r);
    iostatus = io_packet_received(&recvflags, r, &from, &twotargets->laddr);
 
    gettimeofday_monotonic(&target->lastio);
@@ -1377,6 +1388,15 @@ io_udp_target2client(control, client, twotargets, state,
                                 &client->raddr,
                                 emsg,
                                 sizeof(emsg));
+
+      if (w == 0 && payloadlen != 0)
+         sockd_stats_update_io_outcome(SOCKS_UDP,
+                                       SOCKD_STATS_IO_SIDE_CLIENT,
+                                       SOCKD_STATS_IO_ZERO_WRITE, 1);
+      else if (w > 0 && (size_t)w < payloadlen)
+         sockd_stats_update_io_outcome(SOCKS_UDP,
+                                       SOCKD_STATS_IO_SIDE_CLIENT,
+                                       SOCKD_STATS_IO_PARTIAL_WRITE, 1);
 
       *bwused = w;
 

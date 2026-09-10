@@ -1915,7 +1915,8 @@ recv_io(s, io)
        * without problems.
        */
       io->allocated = 1;
-      sockd_stats_update_session_started(io->state.protocol, 1);
+      sockd_stats_update_session_started(io->state.protocol,
+                                         io->src.raddr.ss_family, 1);
    }
 
    iostate.freefds -= fdreceived;
@@ -3487,10 +3488,11 @@ connectstatus(io, badfd)
 }
 
 void
-io_update(timenow, bwused, i_read, i_written,
+io_update(timenow, bwused, protocol, i_read, i_written,
           e_read, e_written, rule, packetrule, lock)
    const struct timeval *timenow;
    const size_t bwused;
+   const int protocol;
    const iocount_t *i_read;
    const iocount_t *i_written;
    const iocount_t *e_read;
@@ -3511,7 +3513,8 @@ io_update(timenow, bwused, i_read, i_written,
             0 : (unsigned long)rule->bw_shmid,
         (unsigned long)packetrule->mstats_shmid);
 
-   sockd_stats_update_io(i_read == NULL ? 0 : i_read->bytes,
+   sockd_stats_update_io(protocol,
+                         i_read == NULL ? 0 : i_read->bytes,
                          i_written == NULL ? 0 : i_written->bytes,
                          e_read == NULL ? 0 : e_read->bytes,
                          e_written == NULL ? 0 : e_written->bytes);
@@ -3659,7 +3662,8 @@ io_delete(mother, io, badfd, status)
                                  &tnow);
    }
 
-   sockd_stats_update_session_closed(io->state.protocol, status, 1);
+   sockd_stats_update_session_closed(io->state.protocol,
+                                    io->src.raddr.ss_family, status, 1);
    sockd_stats_update_latency(SOCKD_STATS_LATENCY_SESSION,
                               &io->state.time.accepted,
                               &tnow);

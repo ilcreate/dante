@@ -67,6 +67,14 @@ const uint64_t sockd_stats_latency_bucket_upper_bounds
       UINT64_C(3600000000)
    };
 
+const uint64_t sockd_stats_datagram_size_bucket_upper_bounds
+   [SOCKD_STATS_DATAGRAM_SIZE_BUCKET_COUNT] = {
+      UINT64_C(64), UINT64_C(128), UINT64_C(256), UINT64_C(512),
+      UINT64_C(1024), UINT64_C(1280), UINT64_C(1500), UINT64_C(2048),
+      UINT64_C(4096), UINT64_C(8192), UINT64_C(16384), UINT64_C(32768),
+      UINT64_C(65507), UINT64_C(65535)
+   };
+
 static void
 add_counter(uint64_t *counter, const uint64_t value)
 {
@@ -224,6 +232,70 @@ normalize_protocol(const int protocol)
    return SOCKD_STATS_PROTOCOL_UNKNOWN;
 }
 
+static sockd_stats_direction_t
+normalize_direction(const sockd_stats_direction_t direction)
+{
+   switch (direction) {
+      case SOCKD_STATS_DIRECTION_CLIENT_TO_TARGET:
+      case SOCKD_STATS_DIRECTION_TARGET_TO_CLIENT:
+      case SOCKD_STATS_DIRECTION_UNKNOWN:
+         return direction;
+
+      case SOCKD_STATS_DIRECTION_COUNT:
+         break;
+   }
+
+   return SOCKD_STATS_DIRECTION_UNKNOWN;
+}
+
+static sockd_stats_address_t
+normalize_address_family(const int address_family)
+{
+   switch (address_family) {
+      case AF_INET:
+         return SOCKD_STATS_ADDRESS_IPV4;
+
+      case AF_INET6:
+         return SOCKD_STATS_ADDRESS_IPV6;
+   }
+
+   return SOCKD_STATS_ADDRESS_UNKNOWN;
+}
+
+static sockd_stats_io_side_t
+normalize_io_side(const sockd_stats_io_side_t side)
+{
+   switch (side) {
+      case SOCKD_STATS_IO_SIDE_CLIENT:
+      case SOCKD_STATS_IO_SIDE_TARGET:
+      case SOCKD_STATS_IO_SIDE_UNKNOWN:
+         return side;
+
+      case SOCKD_STATS_IO_SIDE_COUNT:
+         break;
+   }
+
+   return SOCKD_STATS_IO_SIDE_UNKNOWN;
+}
+
+static sockd_stats_io_outcome_t
+normalize_io_outcome(const sockd_stats_io_outcome_t outcome)
+{
+   switch (outcome) {
+      case SOCKD_STATS_IO_READ_ERROR:
+      case SOCKD_STATS_IO_WRITE_ERROR:
+      case SOCKD_STATS_IO_ZERO_WRITE:
+      case SOCKD_STATS_IO_PARTIAL_WRITE:
+      case SOCKD_STATS_IO_OUTCOME_UNKNOWN:
+         return outcome;
+
+      case SOCKD_STATS_IO_OUTCOME_COUNT:
+         break;
+   }
+
+   return SOCKD_STATS_IO_OUTCOME_UNKNOWN;
+}
+
 static sockd_stats_close_t
 normalize_close(const iostatus_t status)
 {
@@ -301,31 +373,44 @@ sockd_stats_add_request(sockd_stats_t *stats, const int command,
 
 void
 sockd_stats_add_session_started(sockd_stats_t *stats, const int protocol,
+                                const int address_family,
                                 const uint64_t value)
 {
    sockd_stats_session_t *session
    = &stats->sessions[normalize_protocol(protocol)];
+   sockd_stats_session_t *family
+   = &stats->sessions_by_address_family[
+        normalize_address_family(address_family)];
 
    sockd_stats_add(stats, SOCKD_STAT_SESSION_ESTABLISHED, value);
    add_counter(&session->started, value);
    add_counter(&session->active, value);
+   add_counter(&family->started, value);
+   add_counter(&family->active, value);
 }
 
 void
 sockd_stats_add_session_closed(sockd_stats_t *stats, const int protocol,
+                               const int address_family,
                                const iostatus_t status, const uint64_t value)
 {
    sockd_stats_session_t *session
    = &stats->sessions[normalize_protocol(protocol)];
+   sockd_stats_session_t *family
+   = &stats->sessions_by_address_family[
+        normalize_address_family(address_family)];
 
    sockd_stats_add(stats, SOCKD_STAT_SESSION_CLOSED, value);
    add_counter(&session->closed, value);
    subtract_gauge(&session->active, value);
+   add_counter(&family->closed, value);
+   subtract_gauge(&family->active, value);
    add_counter(&stats->session_close_reason[normalize_close(status)], value);
 
    if (status_is_error(status)) {
       sockd_stats_add(stats, SOCKD_STAT_SESSION_ERROR, value);
       add_counter(&session->errors, value);
+      add_counter(&family->errors, value);
    }
 }
 
@@ -363,6 +448,60 @@ normalize_udp_direction(const sockd_stats_udp_direction_t direction)
    }
 
    return SOCKD_STATS_UDP_DIRECTION_UNKNOWN;
+}
+
+static sockd_stats_direction_t
+traffic_direction_from_udp(const sockd_stats_udp_direction_t direction)
+{
+   switch (normalize_udp_direction(direction)) {
+      case SOCKD_STATS_UDP_CLIENT_TO_TARGET:
+         return SOCKD_STATS_DIRECTION_CLIENT_TO_TARGET;
+
+      case SOCKD_STATS_UDP_TARGET_TO_CLIENT:
+         return SOCKD_STATS_DIRECTION_TARGET_TO_CLIENT;
+
+      case SOCKD_STATS_UDP_DIRECTION_UNKNOWN:
+      case SOCKD_STATS_UDP_DIRECTION_COUNT:
+         break;
+   }
+
+   return SOCKD_STATS_DIRECTION_UNKNOWN;
+}
+
+static sockd_stats_io_side_t
+udp_read_side(const sockd_stats_udp_direction_t direction)
+{
+   switch (normalize_udp_direction(direction)) {
+      case SOCKD_STATS_UDP_CLIENT_TO_TARGET:
+         return SOCKD_STATS_IO_SIDE_CLIENT;
+
+      case SOCKD_STATS_UDP_TARGET_TO_CLIENT:
+         return SOCKD_STATS_IO_SIDE_TARGET;
+
+      case SOCKD_STATS_UDP_DIRECTION_UNKNOWN:
+      case SOCKD_STATS_UDP_DIRECTION_COUNT:
+         break;
+   }
+
+   return SOCKD_STATS_IO_SIDE_UNKNOWN;
+}
+
+static sockd_stats_io_side_t
+udp_write_side(const sockd_stats_udp_direction_t direction)
+{
+   switch (normalize_udp_direction(direction)) {
+      case SOCKD_STATS_UDP_CLIENT_TO_TARGET:
+         return SOCKD_STATS_IO_SIDE_TARGET;
+
+      case SOCKD_STATS_UDP_TARGET_TO_CLIENT:
+         return SOCKD_STATS_IO_SIDE_CLIENT;
+
+      case SOCKD_STATS_UDP_DIRECTION_UNKNOWN:
+      case SOCKD_STATS_UDP_DIRECTION_COUNT:
+         break;
+   }
+
+   return SOCKD_STATS_IO_SIDE_UNKNOWN;
 }
 
 static sockd_stats_udp_drop_t
@@ -704,6 +843,59 @@ sockd_stats_observe_latency(sockd_stats_t *stats,
    return 1;
 }
 
+void
+sockd_stats_add_io(sockd_stats_t *stats, const int protocol,
+                   const uint64_t client_read,
+                   const uint64_t client_written,
+                   const uint64_t target_read,
+                   const uint64_t target_written)
+{
+   const sockd_stats_protocol_t normalized = normalize_protocol(protocol);
+
+   sockd_stats_add(stats, SOCKD_STAT_CLIENT_READ_BYTES, client_read);
+   sockd_stats_add(stats, SOCKD_STAT_CLIENT_WRITTEN_BYTES, client_written);
+   sockd_stats_add(stats, SOCKD_STAT_TARGET_READ_BYTES, target_read);
+   sockd_stats_add(stats, SOCKD_STAT_TARGET_WRITTEN_BYTES, target_written);
+   add_counter(&stats->traffic_bytes[normalized]
+                                    [SOCKD_STATS_DIRECTION_CLIENT_TO_TARGET],
+               client_read);
+   add_counter(&stats->traffic_bytes[normalized]
+                                    [SOCKD_STATS_DIRECTION_TARGET_TO_CLIENT],
+               target_read);
+}
+
+void
+sockd_stats_observe_udp_datagram_size(sockd_stats_t *stats,
+                                      const sockd_stats_direction_t direction,
+                                      const uint64_t bytes)
+{
+   sockd_stats_size_histogram_t *histogram;
+   size_t bucket;
+
+   histogram = &stats->udp_datagram_size[normalize_direction(direction)];
+   add_counter(&histogram->count, 1);
+   add_counter(&histogram->sum_bytes, bytes);
+
+   /* count is the implicit +Inf bucket; stored buckets are cumulative. */
+   for (bucket = 0;
+        bucket < SOCKD_STATS_DATAGRAM_SIZE_BUCKET_COUNT;
+        ++bucket) {
+      if (bytes <= sockd_stats_datagram_size_bucket_upper_bounds[bucket])
+         add_counter(&histogram->cumulative_bucket_counts[bucket], 1);
+   }
+}
+
+void
+sockd_stats_add_io_outcome(sockd_stats_t *stats, const int protocol,
+                           const sockd_stats_io_side_t side,
+                           const sockd_stats_io_outcome_t outcome,
+                           const uint64_t value)
+{
+   add_counter(&stats->io_outcomes[normalize_protocol(protocol)]
+                                  [normalize_io_side(side)]
+                                  [normalize_io_outcome(outcome)], value);
+}
+
 #if !SOCKD_STATS_TEST
 static void
 sockd_stats_lock(int *saved_errno)
@@ -761,7 +953,9 @@ sockd_stats_update_request(const int command, const iostatus_t result,
 }
 
 void
-sockd_stats_update_session_started(const int protocol, const uint64_t value)
+sockd_stats_update_session_started(const int protocol,
+                                   const int address_family,
+                                   const uint64_t value)
 {
    int saved_errno;
 
@@ -769,12 +963,14 @@ sockd_stats_update_session_started(const int protocol, const uint64_t value)
       return;
 
    sockd_stats_lock(&saved_errno);
-   sockd_stats_add_session_started(&sockscf.shmeminfo->stats, protocol, value);
+   sockd_stats_add_session_started(&sockscf.shmeminfo->stats, protocol,
+                                   address_family, value);
    sockd_stats_unlock(saved_errno);
 }
 
 void
 sockd_stats_update_session_closed(const int protocol,
+                                  const int address_family,
                                   const iostatus_t status,
                                   const uint64_t value)
 {
@@ -786,6 +982,7 @@ sockd_stats_update_session_closed(const int protocol,
    sockd_stats_lock(&saved_errno);
    sockd_stats_add_session_closed(&sockscf.shmeminfo->stats,
                                   protocol,
+                                  address_family,
                                   status,
                                   value);
    sockd_stats_unlock(saved_errno);
@@ -819,14 +1016,19 @@ sockd_stats_update_target_connect_result(const int error,
 
 void
 sockd_stats_update_udp_received(const sockd_stats_udp_direction_t direction,
-                                const uint64_t value)
+                                const uint64_t bytes)
 {
+   sockd_stats_t *stats;
    int saved_errno;
 
    if (sockscf.shmeminfo == NULL)
       return;
    sockd_stats_lock(&saved_errno);
-   sockd_stats_add_udp_received(&sockscf.shmeminfo->stats, direction, value);
+   stats = &sockscf.shmeminfo->stats;
+   sockd_stats_add_udp_received(stats, direction, 1);
+   sockd_stats_observe_udp_datagram_size(stats,
+                                         traffic_direction_from_udp(direction),
+                                         bytes);
    sockd_stats_unlock(saved_errno);
 }
 
@@ -854,6 +1056,9 @@ sockd_stats_update_udp_receive_error(
    sockd_stats_lock(&saved_errno);
    sockd_stats_add_udp_receive_error(&sockscf.shmeminfo->stats,
                                      direction, value);
+   sockd_stats_add_io_outcome(&sockscf.shmeminfo->stats, SOCKS_UDP,
+                              udp_read_side(direction),
+                              SOCKD_STATS_IO_READ_ERROR, value);
    sockd_stats_unlock(saved_errno);
 }
 
@@ -868,6 +1073,11 @@ sockd_stats_update_udp_drop(const sockd_stats_udp_direction_t direction,
       return;
    sockd_stats_lock(&saved_errno);
    sockd_stats_add_udp_drop(&sockscf.shmeminfo->stats, direction, reason, value);
+   if (normalize_udp_drop(reason) == SOCKD_STATS_UDP_DROP_SEND_ERROR) {
+      sockd_stats_add_io_outcome(&sockscf.shmeminfo->stats, SOCKS_UDP,
+                                 udp_write_side(direction),
+                                 SOCKD_STATS_IO_WRITE_ERROR, value);
+   }
    sockd_stats_unlock(saved_errno);
 }
 
@@ -953,7 +1163,7 @@ sockd_stats_update_latency(const sockd_stats_latency_t latency,
 }
 
 void
-sockd_stats_update_io(const uint64_t client_read,
+sockd_stats_update_io(const int protocol, const uint64_t client_read,
                       const uint64_t client_written,
                       const uint64_t target_read,
                       const uint64_t target_written)
@@ -968,10 +1178,25 @@ sockd_stats_update_io(const uint64_t client_read,
 
    sockd_stats_lock(&saved_errno);
    stats = &sockscf.shmeminfo->stats;
-   sockd_stats_add(stats, SOCKD_STAT_CLIENT_READ_BYTES, client_read);
-   sockd_stats_add(stats, SOCKD_STAT_CLIENT_WRITTEN_BYTES, client_written);
-   sockd_stats_add(stats, SOCKD_STAT_TARGET_READ_BYTES, target_read);
-   sockd_stats_add(stats, SOCKD_STAT_TARGET_WRITTEN_BYTES, target_written);
+   sockd_stats_add_io(stats, protocol, client_read, client_written,
+                      target_read, target_written);
+   sockd_stats_unlock(saved_errno);
+}
+
+void
+sockd_stats_update_io_outcome(const int protocol,
+                              const sockd_stats_io_side_t side,
+                              const sockd_stats_io_outcome_t outcome,
+                              const uint64_t value)
+{
+   int saved_errno;
+
+   if (sockscf.shmeminfo == NULL)
+      return;
+
+   sockd_stats_lock(&saved_errno);
+   sockd_stats_add_io_outcome(&sockscf.shmeminfo->stats, protocol, side,
+                              outcome, value);
    sockd_stats_unlock(saved_errno);
 }
 
@@ -1091,12 +1316,22 @@ sockd_stats_json(const sockd_stats_t *stats, const time_t now,
       "negotiation", "request", "target_connect", "first_io", "session",
       "dns_resolver", "authentication"
    };
+   static const char *const address_family_names[] = {
+      "ipv4", "ipv6", "unknown"
+   };
+   static const char *const io_side_names[] = {
+      "client", "target", "unknown"
+   };
+   static const char *const io_outcome_names[] = {
+      "read_errors", "write_errors", "zero_writes", "partial_writes",
+      "unknown"
+   };
    const intmax_t uptime = now > stats->started_at ?
                               (intmax_t)(now - stats->started_at) : 0;
    stats_buffer_t output = { response, responsesize, 0, 0 };
-   size_t acl, auth, bucket, command, connect_result, direction, dns_operation,
-          dns_result, drop, latency, negotiation, protocol, result, reason,
-          worker;
+   size_t acl, address_family, auth, bucket, command, connect_result,
+          direction, dns_operation, dns_result, drop, io_outcome, io_side,
+          latency, negotiation, protocol, result, reason, worker;
 
    SASSERTX(ELEMENTS(negotiation_names) == SOCKD_STATS_NEGOTIATION_COUNT);
    SASSERTX(ELEMENTS(command_names) == SOCKD_STATS_COMMAND_COUNT);
@@ -1112,8 +1347,13 @@ sockd_stats_json(const sockd_stats_t *stats, const time_t now,
    SASSERTX(ELEMENTS(dns_operation_names) == SOCKD_STATS_DNS_OPERATION_COUNT);
    SASSERTX(ELEMENTS(dns_result_names) == SOCKD_STATS_DNS_RESULT_COUNT);
    SASSERTX(ELEMENTS(latency_names) == SOCKD_STATS_LATENCY_COUNT);
+   SASSERTX(ELEMENTS(address_family_names) == SOCKD_STATS_ADDRESS_COUNT);
+   SASSERTX(ELEMENTS(io_side_names) == SOCKD_STATS_IO_SIDE_COUNT);
+   SASSERTX(ELEMENTS(io_outcome_names) == SOCKD_STATS_IO_OUTCOME_COUNT);
    SASSERTX(ELEMENTS(sockd_stats_latency_bucket_upper_bounds)
          == SOCKD_STATS_LATENCY_BUCKET_COUNT);
+   SASSERTX(ELEMENTS(sockd_stats_datagram_size_bucket_upper_bounds)
+         == SOCKD_STATS_DATAGRAM_SIZE_BUCKET_COUNT);
 
    stats_buffer_append(&output,
       "{\"schema_version\":%u,"
@@ -1347,7 +1587,109 @@ sockd_stats_json(const sockd_stats_t *stats, const time_t now,
       stats_buffer_append(&output, "]}");
    }
 
-   stats_buffer_append(&output, "}}}\n");
+   stats_buffer_append(&output, "},\"traffic\":{\"bytes\":{");
+   for (protocol = 0; protocol < SOCKD_STATS_PROTOCOL_COUNT; ++protocol) {
+      stats_buffer_append(&output,
+                          "%s\"%s\":{"
+                          "\"client_to_target_total\":%"PRIu64","
+                          "\"target_to_client_total\":%"PRIu64"}",
+                          protocol == 0 ? "" : ",",
+                          protocol_names[protocol],
+                          stats->traffic_bytes[protocol]
+                                              [SOCKD_STATS_DIRECTION_CLIENT_TO_TARGET],
+                          stats->traffic_bytes[protocol]
+                                              [SOCKD_STATS_DIRECTION_TARGET_TO_CLIENT]);
+   }
+
+   stats_buffer_append(&output, "},\"sessions_by_address_family\":{");
+   for (address_family = 0;
+        address_family < SOCKD_STATS_ADDRESS_COUNT;
+        ++address_family) {
+      const sockd_stats_session_t *session
+      = &stats->sessions_by_address_family[address_family];
+
+      stats_buffer_append(&output,
+                          "%s\"%s\":{"
+                          "\"started_total\":%"PRIu64","
+                          "\"active\":%"PRIu64","
+                          "\"closed_total\":%"PRIu64","
+                          "\"errors_total\":%"PRIu64"}",
+                          address_family == 0 ? "" : ",",
+                          address_family_names[address_family],
+                          session->started,
+                          session->active,
+                          session->closed,
+                          session->errors);
+   }
+
+   stats_buffer_append(&output,
+                       "},\"udp_datagram_size\":{"
+                       "\"unit\":\"bytes\","
+                       "\"bucket_upper_bounds\":[");
+   for (bucket = 0;
+        bucket < SOCKD_STATS_DATAGRAM_SIZE_BUCKET_COUNT;
+        ++bucket) {
+      stats_buffer_append(&output,
+                          "%s%"PRIu64,
+                          bucket == 0 ? "" : ",",
+                          sockd_stats_datagram_size_bucket_upper_bounds[bucket]);
+   }
+
+   stats_buffer_append(&output, "],");
+   for (direction = 0;
+        direction < SOCKD_STATS_DIRECTION_COUNT;
+        ++direction) {
+      const sockd_stats_size_histogram_t *histogram
+      = &stats->udp_datagram_size[direction];
+
+      stats_buffer_append(&output,
+                          "%s\"%s\":{"
+                          "\"count\":%"PRIu64","
+                          "\"sum_bytes\":%"PRIu64","
+                          "\"cumulative_bucket_counts\":[",
+                          direction == 0 ? "" : ",",
+                          udp_direction_names[direction],
+                          histogram->count,
+                          histogram->sum_bytes);
+      for (bucket = 0;
+           bucket < SOCKD_STATS_DATAGRAM_SIZE_BUCKET_COUNT;
+           ++bucket) {
+         stats_buffer_append(&output,
+                             "%s%"PRIu64,
+                             bucket == 0 ? "" : ",",
+                             histogram->cumulative_bucket_counts[bucket]);
+      }
+      stats_buffer_append(&output, "]}");
+   }
+
+   stats_buffer_append(&output, "},\"io_outcomes\":{");
+   for (protocol = 0; protocol < SOCKD_STATS_PROTOCOL_COUNT; ++protocol) {
+      stats_buffer_append(&output,
+                          "%s\"%s\":{",
+                          protocol == 0 ? "" : ",",
+                          protocol_names[protocol]);
+      for (io_side = 0; io_side < SOCKD_STATS_IO_SIDE_COUNT; ++io_side) {
+         stats_buffer_append(&output,
+                             "%s\"%s\":{",
+                             io_side == 0 ? "" : ",",
+                             io_side_names[io_side]);
+         for (io_outcome = 0;
+              io_outcome < SOCKD_STATS_IO_OUTCOME_COUNT;
+              ++io_outcome) {
+            stats_buffer_append(&output,
+                                "%s\"%s_total\":%"PRIu64,
+                                io_outcome == 0 ? "" : ",",
+                                io_outcome_names[io_outcome],
+                                stats->io_outcomes[protocol]
+                                                  [io_side]
+                                                  [io_outcome]);
+         }
+         stats_buffer_append(&output, "}");
+      }
+      stats_buffer_append(&output, "}");
+   }
+
+   stats_buffer_append(&output, "}}}}\n");
 
    if (output.failed)
       return -1;

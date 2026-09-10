@@ -311,6 +311,18 @@ do {                                                                           \
 
       if (w == -1) {
          *badfd = io->dst.s;
+         sockd_stats_update_io_outcome(
+            SOCKS_TCP,
+            isreversed ? SOCKD_STATS_IO_SIDE_CLIENT :
+                         SOCKD_STATS_IO_SIDE_TARGET,
+            SOCKD_STATS_IO_WRITE_ERROR, 1);
+         sockd_stats_update_io_outcome(
+            SOCKS_TCP,
+            isreversed ? SOCKD_STATS_IO_SIDE_CLIENT :
+                         SOCKD_STATS_IO_SIDE_TARGET,
+            sendtoflags.tosocket == 0 ? SOCKD_STATS_IO_ZERO_WRITE :
+                                       SOCKD_STATS_IO_PARTIAL_WRITE,
+            1);
 
          if (!ERRNOISTMP(errno)) {
             CHECK_ALARM(IO_IOERROR);
@@ -394,6 +406,18 @@ do {                                                                           \
 
       if (w == -1) {
          *badfd = io->src.s;
+         sockd_stats_update_io_outcome(
+            SOCKS_TCP,
+            isreversed ? SOCKD_STATS_IO_SIDE_TARGET :
+                         SOCKD_STATS_IO_SIDE_CLIENT,
+            SOCKD_STATS_IO_WRITE_ERROR, 1);
+         sockd_stats_update_io_outcome(
+            SOCKS_TCP,
+            isreversed ? SOCKD_STATS_IO_SIDE_TARGET :
+                         SOCKD_STATS_IO_SIDE_CLIENT,
+            sendtoflags.tosocket == 0 ? SOCKD_STATS_IO_ZERO_WRITE :
+                                       SOCKD_STATS_IO_PARTIAL_WRITE,
+            1);
 
          if (!ERRNOISTMP(errno)) {
             CHECK_ALARM(IO_IOERROR);
@@ -462,6 +486,7 @@ do {                                                                           \
 
    io_update(&io->lastio,
              bwused,
+             io->state.protocol,
              isreversed ? &dst_read    : &src_read,
              isreversed ? &dst_written : &src_written,
              isreversed ? &src_read    : &dst_read,
@@ -500,6 +525,7 @@ io_tcp_rw(in, out, badfd, iostatus,
    sendto_info_t sendtoflags;
    recvfrom_info_t recvfromflags;
    ssize_t r, w, p;
+   sockd_stats_io_side_t in_side, out_side;
 #if 0 /* for aid in debuging bufferproblems. */
    static size_t j;
    size_t lenv[] = { 60000, 60001, 60002, 60003, 60004, 60005, 60006, 60007,
@@ -511,6 +537,11 @@ io_tcp_rw(in, out, badfd, iostatus,
 #endif /* COVENANT */
 
    SASSERTX(!in->state.fin_received);
+
+   in_side = in->isclientside ? SOCKD_STATS_IO_SIDE_CLIENT :
+                                SOCKD_STATS_IO_SIDE_TARGET;
+   out_side = out->isclientside ? SOCKD_STATS_IO_SIDE_CLIENT :
+                                  SOCKD_STATS_IO_SIDE_TARGET;
 
    *iostatus = IO_NOERROR;
 
@@ -527,10 +558,14 @@ io_tcp_rw(in, out, badfd, iostatus,
    if (in->state.err != 0) {
       errno = in->state.err;
       *badfd  = in->s;
+      sockd_stats_update_io_outcome(SOCKS_TCP, in_side,
+                                    SOCKD_STATS_IO_READ_ERROR, 1);
    }
    else if (out->state.err != 0) {
       errno = out->state.err;
       *badfd  = out->s;
+      sockd_stats_update_io_outcome(SOCKS_TCP, out_side,
+                                    SOCKD_STATS_IO_WRITE_ERROR, 1);
    }
    else
       *badfd = -1; /* no error so far. */
@@ -749,10 +784,14 @@ io_tcp_rw(in, out, badfd, iostatus,
             else {
                *badfd    = out->s;
                *iostatus = IO_IOERROR;
+               sockd_stats_update_io_outcome(
+                  SOCKS_TCP, out_side, SOCKD_STATS_IO_WRITE_ERROR, 1);
             }
          }
       }
       else {
+         sockd_stats_update_io_outcome(
+            SOCKS_TCP, in_side, SOCKD_STATS_IO_READ_ERROR, 1);
          if (ERRNOISTMP(errno))
             *iostatus = IO_TMPERROR;
          else
@@ -909,6 +948,15 @@ io_tcp_rw(in, out, badfd, iostatus,
    if (w != r) {
       *badfd    = out->s;
       *iostatus = IO_ERROR;
+      sockd_stats_update_io_outcome(
+         SOCKS_TCP, out_side, SOCKD_STATS_IO_WRITE_ERROR, 1);
+
+      if (w == 0)
+         sockd_stats_update_io_outcome(
+            SOCKS_TCP, out_side, SOCKD_STATS_IO_ZERO_WRITE, 1);
+      else if (w > 0)
+         sockd_stats_update_io_outcome(
+            SOCKS_TCP, out_side, SOCKD_STATS_IO_PARTIAL_WRITE, 1);
 
       if (w > 0) {
          swarnx("%s: wrote only %ld/%ld (%s) to fd %d, but we should never "

@@ -297,6 +297,9 @@ run_negotiate()
 
 
          logdisconnect(neg->s, neg, OPERATION_ERROR, &src, NULL, buf, buflen);
+         sockd_stats_update_latency(SOCKD_STATS_LATENCY_NEGOTIATION,
+                                    &neg->state.time.negotiatestart,
+                                    &tnow);
          sockd_stats_update_negotiation(SOCKD_STATS_NEGOTIATION_TIMEOUT, 1);
          delete_negotiate(neg, 0);
       }
@@ -587,6 +590,10 @@ run_negotiate()
 
                errno = 0;
                if (send_negotiate(neg) == 0) {
+                  sockd_stats_update_latency(
+                     SOCKD_STATS_LATENCY_NEGOTIATION,
+                     &neg->state.time.negotiatestart,
+                     &neg->state.time.negotiateend);
                   sockd_stats_update_negotiation(
                      SOCKD_STATS_NEGOTIATION_SUCCESS, 1);
                   delete_negotiate(neg, 1);
@@ -622,6 +629,10 @@ run_negotiate()
                char reason[256];
                int takingtoolong = 0, erroriseof = 0;
 
+               gettimeofday_monotonic(&tnow);
+               sockd_stats_update_latency(SOCKD_STATS_LATENCY_NEGOTIATION,
+                                          &neg->state.time.negotiatestart,
+                                          &tnow);
                sockd_stats_update_negotiation(
                   negstatus == NEGOTIATE_EOF ?
                      SOCKD_STATS_NEGOTIATION_EOF :

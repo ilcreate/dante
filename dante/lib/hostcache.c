@@ -260,6 +260,7 @@ cgetaddrinfo(name, service, hints, res, resmem)
    static size_t cbyname_hit, cbyname_miss;
 #endif /* !STANDALONE_UNIT_TEST */
    dnsinfo_t *freehost;
+   struct timeval resolver_start, resolver_end;
    size_t hashi;
    int have_oldres = 0;
 
@@ -389,6 +390,7 @@ cgetaddrinfo(name, service, hints, res, resmem)
 
    ++cbyname_miss;
 
+   gettimeofday_monotonic(&resolver_start);
    gai_rc = getaddrinfo(name, service, hints, res);
 
    slog(LOG_DEBUG,
@@ -428,6 +430,9 @@ cgetaddrinfo(name, service, hints, res, resmem)
 #if SOCKS_SERVER
    {
       const int resolver_errno = errno;
+      gettimeofday_monotonic(&resolver_end);
+      sockd_stats_update_latency(SOCKD_STATS_LATENCY_DNS,
+                                 &resolver_start, &resolver_end);
       sockd_stats_update_dns(SOCKD_STATS_DNS_FORWARD, gai_rc, 1);
       errno = resolver_errno;
    }
@@ -590,6 +595,7 @@ cgetnameinfo(addr, addrlen, _host, _hostlen, _service, _servicelen, flags)
    static size_t i;
    static int count;
    dnsinfo_t *freehost;
+   struct timeval resolver_start, resolver_end;
    size_t hashi;
    char host[sizeof(freehost->data.getname.name)],
         service[sizeof(freehost->service)];
@@ -700,6 +706,7 @@ do {                                                                           \
    socks_markasnative("*");
 #endif /* SOCKSLIBRARY_DYNAMIC */
 
+   gettimeofday_monotonic(&resolver_start);
    gai_rc = getnameinfo(addr,
                         addrlen,
                         host,
@@ -744,6 +751,9 @@ do {                                                                           \
 #if SOCKS_SERVER
    {
       const int resolver_errno = errno;
+      gettimeofday_monotonic(&resolver_end);
+      sockd_stats_update_latency(SOCKD_STATS_LATENCY_DNS,
+                                 &resolver_start, &resolver_end);
       sockd_stats_update_dns(SOCKD_STATS_DNS_REVERSE, gai_rc, 1);
       errno = resolver_errno;
    }

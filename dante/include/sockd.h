@@ -1849,7 +1849,8 @@ typedef struct {
 } statistic_t;
 
 #define SOCKD_STATS_SCHEMA_VERSION  (1)
-#define SOCKD_STATS_SCHEMA_REVISION (3)
+#define SOCKD_STATS_SCHEMA_REVISION (4)
+#define SOCKD_STATS_LATENCY_BUCKET_COUNT (18)
 
 typedef enum {
    SOCKD_STAT_CLIENT_ACCEPTED = 0,
@@ -2015,6 +2016,26 @@ typedef enum {
    SOCKD_STATS_DNS_RESULT_COUNT
 } sockd_stats_dns_result_t;
 
+typedef enum {
+   SOCKD_STATS_LATENCY_NEGOTIATION = 0,
+   SOCKD_STATS_LATENCY_REQUEST,
+   SOCKD_STATS_LATENCY_TARGET_CONNECT,
+   SOCKD_STATS_LATENCY_FIRST_IO,
+   SOCKD_STATS_LATENCY_SESSION,
+   SOCKD_STATS_LATENCY_DNS,
+   SOCKD_STATS_LATENCY_AUTH,
+   SOCKD_STATS_LATENCY_COUNT
+} sockd_stats_latency_t;
+
+typedef struct {
+   uint64_t count;
+   uint64_t sum_microseconds;
+   uint64_t cumulative_bucket_counts[SOCKD_STATS_LATENCY_BUCKET_COUNT];
+} sockd_stats_histogram_t;
+
+extern const uint64_t sockd_stats_latency_bucket_upper_bounds
+   [SOCKD_STATS_LATENCY_BUCKET_COUNT];
+
 typedef struct {
    uint32_t schema_version;
    uint32_t schema_revision;
@@ -2045,6 +2066,7 @@ typedef struct {
    uint64_t auth[SOCKD_STATS_AUTH_COUNT][SOCKD_STATS_DECISION_COUNT];
    uint64_t acl[SOCKD_STATS_ACL_COUNT][SOCKD_STATS_DECISION_COUNT];
    uint64_t dns[SOCKD_STATS_DNS_OPERATION_COUNT][SOCKD_STATS_DNS_RESULT_COUNT];
+   sockd_stats_histogram_t latency[SOCKD_STATS_LATENCY_COUNT];
 } sockd_stats_t;
 
 typedef struct {
@@ -2241,6 +2263,7 @@ typedef struct {
       struct timeval    negotiatestart;/* time negotiation started.           */
       struct timeval    negotiateend;  /* time negotiation ended.             */
       struct timeval    requestend;    /* time requestprocesssing ended.      */
+      struct timeval    targetconnectstart; /* target connect started.         */
       struct timeval    established;   /* time session was fully established. */
       struct timeval    firstio;       /* time of first i/o operation.        */
    } time;
@@ -4907,6 +4930,10 @@ void sockd_stats_add_acl(sockd_stats_t *stats, int command, int permit,
 void sockd_stats_add_dns(sockd_stats_t *stats,
                          sockd_stats_dns_operation_t operation,
                          int result, uint64_t value);
+int sockd_stats_observe_latency(sockd_stats_t *stats,
+                                sockd_stats_latency_t latency,
+                                const struct timeval *start,
+                                const struct timeval *end);
 void sockd_stats_update(sockd_stat_event_t event, uint64_t value);
 void sockd_stats_update_negotiation(sockd_stats_negotiation_t outcome,
                                     uint64_t value);
@@ -4934,6 +4961,9 @@ void sockd_stats_update_auth(int method, int success, uint64_t value);
 void sockd_stats_update_acl(int command, int permit, uint64_t value);
 void sockd_stats_update_dns(sockd_stats_dns_operation_t operation, int result,
                             uint64_t value);
+void sockd_stats_update_latency(sockd_stats_latency_t latency,
+                                const struct timeval *start,
+                                const struct timeval *end);
 void sockd_stats_update_io(uint64_t client_read, uint64_t client_written,
                            uint64_t target_read, uint64_t target_written);
 void sockd_stats_snapshot(sockd_stats_t *stats);

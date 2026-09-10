@@ -317,6 +317,37 @@ iostate_t iostate;
  */
 static struct timeval bwoverflowtil;
 
+static iostatus_t
+doio_tcp_with_stats(sockd_io_t *io, fd_set *rset, fd_set *wset,
+                    const int flags, int *badfd)
+{
+   const int firstio_unset = !timerisset(&io->state.time.firstio);
+   const iostatus_t status = doio_tcp(io, rset, wset, flags, badfd);
+
+   if (firstio_unset && timerisset(&io->state.time.firstio))
+      sockd_stats_update_latency(SOCKD_STATS_LATENCY_FIRST_IO,
+                                 &io->state.time.established,
+                                 &io->state.time.firstio);
+
+   return status;
+}
+
+#if HAVE_UDP_SUPPORT
+static iostatus_t
+doio_udp_with_stats(sockd_io_t *io, fd_set *rset, int *badfd)
+{
+   const int firstio_unset = !timerisset(&io->state.time.firstio);
+   const iostatus_t status = doio_udp(io, rset, badfd);
+
+   if (firstio_unset && timerisset(&io->state.time.firstio))
+      sockd_stats_update_latency(SOCKD_STATS_LATENCY_FIRST_IO,
+                                 &io->state.time.established,
+                                 &io->state.time.firstio);
+
+   return status;
+}
+#endif /* HAVE_UDP_SUPPORT */
+
 void
 run_io()
 {
@@ -1154,7 +1185,7 @@ run_io()
 
             do {
                io->dst.s = -1; /* don't yet know what dst will be. */
-               iostatus  = doio_udp(io, udprset, &badfd);
+               iostatus  = doio_udp_with_stats(io, udprset, &badfd);
 
                if (IOSTATUS_FATALERROR(iostatus) && badfd != -1) {
                   if (io->dst.s != -1)
@@ -1180,7 +1211,7 @@ run_io()
              */
             SASSERTX(!FD_ISSET(io->src.s, udprset));
 
-            iostatus = doio_udp(io, udprset, &badfd);
+            iostatus = doio_udp_with_stats(io, udprset, &badfd);
 
             if (io->dst.s != -1)
                FD_CLR(io->dst.s, udprset);
@@ -1202,7 +1233,7 @@ run_io()
           * packet to until we've read the client packet.
           */
 
-         iostatus = doio_udp(io, udprset, &badfd);
+         iostatus = doio_udp_with_stats(io, udprset, &badfd);
 
          io_clearset(io, IOSTATUS_FATALERROR(iostatus), udprset);
 
@@ -1252,7 +1283,7 @@ run_io()
          else
             flags = 0;
 
-         iostatus = doio_tcp(io, rset, wset, flags, &badfd);
+         iostatus = doio_tcp_with_stats(io, rset, wset, flags, &badfd);
 
          io_clearset(io, IOSTATUS_FATALERROR(iostatus), rset);
          io_clearset(io, IOSTATUS_FATALERROR(iostatus), wset);
@@ -3280,6 +3311,7 @@ connectstatus(io, badfd)
 {
    const char *function = "connectstatus()";
    clientinfo_t cinfo;
+   struct timeval connectend;
    socklen_t len;
    char src[MAXSOCKSHOSTSTRING], dst[MAXSOCKSHOSTSTRING], buf[2048];
 
@@ -3299,6 +3331,9 @@ connectstatus(io, badfd)
       iologaddr_t src, dst;
 
       gettimeofday_monotonic(&io->state.time.established);
+      sockd_stats_update_latency(SOCKD_STATS_LATENCY_TARGET_CONNECT,
+                                 &io->state.time.targetconnectstart,
+                                 &io->state.time.established);
 
       slog(LOG_DEBUG, "%s: connect to %s on fd %d completed successfully",
            function, sockshost2string(&io->dst.host, NULL, 0), io->dst.s);
@@ -3422,7 +3457,11 @@ connectstatus(io, badfd)
    else
       io->dst.state.err = errno;
 
+   gettimeofday_monotonic(&connectend);
    sockd_stats_update_target_connect_result(io->dst.state.err, 1);
+   sockd_stats_update_latency(SOCKD_STATS_LATENCY_TARGET_CONNECT,
+                              &io->state.time.targetconnectstart,
+                              &connectend);
 
    slog(LOG_DEBUG,
         "%s: connect(2) to %s on fd %d, on behalf of client %s, failed: %s",
@@ -3609,14 +3648,21 @@ io_delete(mother, io, badfd, status)
 
    SASSERTX(io->allocated);
 
-   if (io_connectisinprogress(io))
+   gettimeofday_monotonic(&tnow);
+
+   if (io_connectisinprogress(io)) {
       sockd_stats_update_target_connect_result(status == IO_TIMEOUT ?
                                                 ETIMEDOUT : ECONNABORTED,
                                                 1);
+      sockd_stats_update_latency(SOCKD_STATS_LATENCY_TARGET_CONNECT,
+                                 &io->state.time.targetconnectstart,
+                                 &tnow);
+   }
 
    sockd_stats_update_session_closed(io->state.protocol, status, 1);
-
-   gettimeofday_monotonic(&tnow);
+   sockd_stats_update_latency(SOCKD_STATS_LATENCY_SESSION,
+                              &io->state.time.established,
+                              &tnow);
 
 #if SOCKS_SERVER
    /*

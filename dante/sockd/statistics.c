@@ -57,6 +57,16 @@ static const char rcsid[] =
 #define SOCKD_STATS_RESPONSE_MAX (32768)
 #define SOCKD_STATS_IO_TIMEOUT_SECONDS (1)
 
+const uint64_t sockd_stats_latency_bucket_upper_bounds
+   [SOCKD_STATS_LATENCY_BUCKET_COUNT] = {
+      UINT64_C(100), UINT64_C(500), UINT64_C(1000), UINT64_C(5000),
+      UINT64_C(10000), UINT64_C(25000), UINT64_C(50000), UINT64_C(100000),
+      UINT64_C(250000), UINT64_C(500000), UINT64_C(1000000),
+      UINT64_C(2500000), UINT64_C(5000000), UINT64_C(10000000),
+      UINT64_C(30000000), UINT64_C(60000000), UINT64_C(300000000),
+      UINT64_C(3600000000)
+   };
+
 static void
 add_counter(uint64_t *counter, const uint64_t value)
 {
@@ -601,6 +611,97 @@ sockd_stats_add_dns(sockd_stats_t *stats,
                           [normalize_dns_result(result)], value);
 }
 
+static int
+latency_is_valid(const sockd_stats_latency_t latency)
+{
+   switch (latency) {
+      case SOCKD_STATS_LATENCY_NEGOTIATION:
+      case SOCKD_STATS_LATENCY_REQUEST:
+      case SOCKD_STATS_LATENCY_TARGET_CONNECT:
+      case SOCKD_STATS_LATENCY_FIRST_IO:
+      case SOCKD_STATS_LATENCY_SESSION:
+      case SOCKD_STATS_LATENCY_DNS:
+      case SOCKD_STATS_LATENCY_AUTH:
+         return 1;
+
+      case SOCKD_STATS_LATENCY_COUNT:
+         break;
+   }
+
+   return 0;
+}
+
+static int
+duration_microseconds(const struct timeval *start,
+                      const struct timeval *end,
+                      uint64_t *duration)
+{
+   uintmax_t seconds;
+   uint64_t microseconds;
+
+   if (start == NULL || end == NULL || duration == NULL)
+      return 0;
+   if ((start->tv_sec == 0 && start->tv_usec == 0)
+   ||  (end->tv_sec == 0 && end->tv_usec == 0)
+   ||  start->tv_usec < 0 || start->tv_usec >= 1000000
+   ||  end->tv_usec < 0 || end->tv_usec >= 1000000
+   ||  end->tv_sec < start->tv_sec
+   ||  (end->tv_sec == start->tv_sec && end->tv_usec < start->tv_usec))
+      return 0;
+
+   if ((time_t)-1 < (time_t)0
+   && ((intmax_t)start->tv_sec < 0 || (intmax_t)end->tv_sec < 0))
+      return 0;
+
+   seconds = (uintmax_t)end->tv_sec - (uintmax_t)start->tv_sec;
+   if (end->tv_usec < start->tv_usec) {
+      if (seconds == 0)
+         return 0;
+      --seconds;
+      microseconds = UINT64_C(1000000)
+                   - (uint64_t)start->tv_usec + (uint64_t)end->tv_usec;
+   }
+   else
+      microseconds = (uint64_t)(end->tv_usec - start->tv_usec);
+
+   if (seconds > UINT64_MAX / UINT64_C(1000000))
+      *duration = UINT64_MAX;
+   else {
+      *duration = (uint64_t)seconds * UINT64_C(1000000);
+      if (UINT64_MAX - *duration < microseconds)
+         *duration = UINT64_MAX;
+      else
+         *duration += microseconds;
+   }
+
+   return 1;
+}
+
+int
+sockd_stats_observe_latency(sockd_stats_t *stats,
+                            const sockd_stats_latency_t latency,
+                            const struct timeval *start,
+                            const struct timeval *end)
+{
+   sockd_stats_histogram_t *histogram;
+   uint64_t duration;
+   size_t bucket;
+
+   if (stats == NULL || !latency_is_valid(latency)
+   || !duration_microseconds(start, end, &duration))
+      return 0;
+
+   histogram = &stats->latency[latency];
+   add_counter(&histogram->count, 1);
+   add_counter(&histogram->sum_microseconds, duration);
+   for (bucket = 0; bucket < SOCKD_STATS_LATENCY_BUCKET_COUNT; ++bucket) {
+      if (duration <= sockd_stats_latency_bucket_upper_bounds[bucket])
+         add_counter(&histogram->cumulative_bucket_counts[bucket], 1);
+   }
+
+   return 1;
+}
+
 #if !SOCKD_STATS_TEST
 static void
 sockd_stats_lock(int *saved_errno)
@@ -835,6 +936,21 @@ sockd_stats_update_dns(const sockd_stats_dns_operation_t operation,
 }
 
 void
+sockd_stats_update_latency(const sockd_stats_latency_t latency,
+                           const struct timeval *start,
+                           const struct timeval *end)
+{
+   int saved_errno;
+
+   if (sockscf.shmeminfo == NULL)
+      return;
+   sockd_stats_lock(&saved_errno);
+   (void)sockd_stats_observe_latency(&sockscf.shmeminfo->stats,
+                                     latency, start, end);
+   sockd_stats_unlock(saved_errno);
+}
+
+void
 sockd_stats_update_io(const uint64_t client_read,
                       const uint64_t client_written,
                       const uint64_t target_read,
@@ -969,11 +1085,16 @@ sockd_stats_json(const sockd_stats_t *stats, const time_t now,
       "success", "not_found", "temporary", "system_error", "internal_error",
       "other"
    };
+   static const char *const latency_names[] = {
+      "negotiation", "request", "target_connect", "first_io", "session",
+      "dns_resolver", "authentication"
+   };
    const intmax_t uptime = now > stats->started_at ?
                               (intmax_t)(now - stats->started_at) : 0;
    stats_buffer_t output = { response, responsesize, 0, 0 };
-   size_t acl, auth, command, connect_result, direction, dns_operation,
-          dns_result, drop, negotiation, protocol, result, reason, worker;
+   size_t acl, auth, bucket, command, connect_result, direction, dns_operation,
+          dns_result, drop, latency, negotiation, protocol, result, reason,
+          worker;
 
    SASSERTX(ELEMENTS(negotiation_names) == SOCKD_STATS_NEGOTIATION_COUNT);
    SASSERTX(ELEMENTS(command_names) == SOCKD_STATS_COMMAND_COUNT);
@@ -988,6 +1109,9 @@ sockd_stats_json(const sockd_stats_t *stats, const time_t now,
    SASSERTX(ELEMENTS(acl_names) == SOCKD_STATS_ACL_COUNT);
    SASSERTX(ELEMENTS(dns_operation_names) == SOCKD_STATS_DNS_OPERATION_COUNT);
    SASSERTX(ELEMENTS(dns_result_names) == SOCKD_STATS_DNS_RESULT_COUNT);
+   SASSERTX(ELEMENTS(latency_names) == SOCKD_STATS_LATENCY_COUNT);
+   SASSERTX(ELEMENTS(sockd_stats_latency_bucket_upper_bounds)
+         == SOCKD_STATS_LATENCY_BUCKET_COUNT);
 
    stats_buffer_append(&output,
       "{\"schema_version\":%u,"
@@ -1186,6 +1310,39 @@ sockd_stats_json(const sockd_stats_t *stats, const time_t now,
                              stats->dns[dns_operation][dns_result]);
       }
       stats_buffer_append(&output, "}");
+   }
+
+   stats_buffer_append(&output,
+                       "},\"latency\":{"
+                       "\"unit\":\"microseconds\","
+                       "\"bucket_upper_bounds\":[");
+   for (bucket = 0; bucket < SOCKD_STATS_LATENCY_BUCKET_COUNT; ++bucket) {
+      stats_buffer_append(&output,
+                          "%s%"PRIu64,
+                          bucket == 0 ? "" : ",",
+                          sockd_stats_latency_bucket_upper_bounds[bucket]);
+   }
+
+   stats_buffer_append(&output, "],");
+   for (latency = 0; latency < SOCKD_STATS_LATENCY_COUNT; ++latency) {
+      const sockd_stats_histogram_t *histogram = &stats->latency[latency];
+
+      stats_buffer_append(&output,
+                          "%s\"%s\":{"
+                          "\"count\":%"PRIu64","
+                          "\"sum_microseconds\":%"PRIu64","
+                          "\"cumulative_bucket_counts\":[",
+                          latency == 0 ? "" : ",",
+                          latency_names[latency],
+                          histogram->count,
+                          histogram->sum_microseconds);
+      for (bucket = 0; bucket < SOCKD_STATS_LATENCY_BUCKET_COUNT; ++bucket) {
+         stats_buffer_append(&output,
+                             "%s%"PRIu64,
+                             bucket == 0 ? "" : ",",
+                             histogram->cumulative_bucket_counts[bucket]);
+      }
+      stats_buffer_append(&output, "]}");
    }
 
    stats_buffer_append(&output, "}}}\n");

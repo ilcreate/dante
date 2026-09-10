@@ -172,21 +172,27 @@ test_detailed_session_updates(void)
    sockd_stats_t stats;
 
    sockd_stats_init(&stats, (time_t)100);
-   sockd_stats_add_session_started(&stats, SOCKS_TCP, 2);
-   sockd_stats_add_session_started(&stats, SOCKS_UDP, 3);
-   sockd_stats_add_session_started(&stats, INT_MAX, 4);
+   sockd_stats_add_session_started(&stats, SOCKS_TCP, AF_INET, 2);
+   sockd_stats_add_session_started(&stats, SOCKS_UDP, AF_INET6, 3);
+   sockd_stats_add_session_started(&stats, INT_MAX, AF_UNSPEC, 4);
 
    TEST_CHECK(stats.sessions[SOCKD_STATS_PROTOCOL_TCP].started == 2);
    TEST_CHECK(stats.sessions[SOCKD_STATS_PROTOCOL_TCP].active == 2);
    TEST_CHECK(stats.sessions[SOCKD_STATS_PROTOCOL_UDP].started == 3);
    TEST_CHECK(stats.sessions[SOCKD_STATS_PROTOCOL_UDP].active == 3);
    TEST_CHECK(stats.sessions[SOCKD_STATS_PROTOCOL_UNKNOWN].started == 4);
+   TEST_CHECK(stats.sessions_by_address_family[SOCKD_STATS_ADDRESS_IPV4]
+                                                .started == 2);
+   TEST_CHECK(stats.sessions_by_address_family[SOCKD_STATS_ADDRESS_IPV6]
+                                                .started == 3);
+   TEST_CHECK(stats.sessions_by_address_family[SOCKD_STATS_ADDRESS_UNKNOWN]
+                                                .started == 4);
    TEST_CHECK(stats.sessions_established == 9);
    TEST_CHECK(stats.sessions_active == 9);
 
-   sockd_stats_add_session_closed(&stats, SOCKS_TCP, IO_CLOSE, 1);
-   sockd_stats_add_session_closed(&stats, SOCKS_UDP, IO_TIMEOUT, 2);
-   sockd_stats_add_session_closed(&stats, INT_MAX, IO_ERROR, 10);
+   sockd_stats_add_session_closed(&stats, SOCKS_TCP, AF_INET, IO_CLOSE, 1);
+   sockd_stats_add_session_closed(&stats, SOCKS_UDP, AF_INET6, IO_TIMEOUT, 2);
+   sockd_stats_add_session_closed(&stats, INT_MAX, AF_UNSPEC, IO_ERROR, 10);
 
    TEST_CHECK(stats.sessions[SOCKD_STATS_PROTOCOL_TCP].active == 1);
    TEST_CHECK(stats.sessions[SOCKD_STATS_PROTOCOL_TCP].closed == 1);
@@ -196,6 +202,16 @@ test_detailed_session_updates(void)
    TEST_CHECK(stats.sessions[SOCKD_STATS_PROTOCOL_UNKNOWN].active == 0);
    TEST_CHECK(stats.sessions[SOCKD_STATS_PROTOCOL_UNKNOWN].closed == 10);
    TEST_CHECK(stats.sessions[SOCKD_STATS_PROTOCOL_UNKNOWN].errors == 10);
+   TEST_CHECK(stats.sessions_by_address_family[SOCKD_STATS_ADDRESS_IPV4]
+                                                .active == 1);
+   TEST_CHECK(stats.sessions_by_address_family[SOCKD_STATS_ADDRESS_IPV6]
+                                                .active == 1);
+   TEST_CHECK(stats.sessions_by_address_family[SOCKD_STATS_ADDRESS_UNKNOWN]
+                                                .active == 0);
+   TEST_CHECK(stats.sessions_by_address_family[SOCKD_STATS_ADDRESS_UNKNOWN]
+                                                .closed == 10);
+   TEST_CHECK(stats.sessions_by_address_family[SOCKD_STATS_ADDRESS_UNKNOWN]
+                                                .errors == 10);
    TEST_CHECK(stats.session_close_reason[SOCKD_STATS_CLOSE_PEER] == 1);
    TEST_CHECK(stats.session_close_reason[SOCKD_STATS_CLOSE_TIMEOUT] == 2);
    TEST_CHECK(stats.session_close_reason[SOCKD_STATS_CLOSE_INTERNAL_ERROR]
@@ -204,7 +220,7 @@ test_detailed_session_updates(void)
    TEST_CHECK(stats.sessions_active == 0);
    TEST_CHECK(stats.session_errors == 12);
 
-   sockd_stats_add_session_closed(&stats, SOCKS_TCP, IO_BLOCK, 1);
+   sockd_stats_add_session_closed(&stats, SOCKS_TCP, AF_INET, IO_BLOCK, 1);
    TEST_CHECK(stats.session_close_reason[SOCKD_STATS_CLOSE_BLOCKED] == 1);
    TEST_CHECK(stats.session_errors == 12);
 }
@@ -229,9 +245,10 @@ test_session_close_taxonomy(void)
    size_t i;
 
    sockd_stats_init(&stats, (time_t)100);
-   sockd_stats_add_session_started(&stats, SOCKS_TCP, 1);
+   sockd_stats_add_session_started(&stats, SOCKS_TCP, AF_INET, 1);
    for (i = 0; i < ELEMENTS(cases); ++i)
-      sockd_stats_add_session_closed(&stats, SOCKS_TCP, cases[i], 1);
+      sockd_stats_add_session_closed(&stats, SOCKS_TCP, AF_INET,
+                                     cases[i], 1);
 
    TEST_CHECK(stats.session_close_reason[SOCKD_STATS_CLOSE_NORMAL] == 1);
    TEST_CHECK(stats.session_close_reason[SOCKD_STATS_CLOSE_BLOCKED] == 2);
@@ -249,6 +266,157 @@ test_session_close_taxonomy(void)
    TEST_CHECK(stats.sessions[SOCKD_STATS_PROTOCOL_TCP].errors == 3);
    TEST_CHECK(stats.session_errors == 3);
 }
+
+static void
+test_traffic_byte_updates(void)
+{
+   sockd_stats_t stats;
+
+   sockd_stats_init(&stats, (time_t)100);
+   sockd_stats_add_io(&stats, SOCKS_TCP, 10, 8, 20, 9);
+   sockd_stats_add_io(&stats, SOCKS_UDP, 30, 28, 40, 39);
+   sockd_stats_add_io(&stats, INT_MAX, 50, 48, 60, 59);
+
+   TEST_CHECK(stats.client_read_bytes == 90);
+   TEST_CHECK(stats.client_written_bytes == 84);
+   TEST_CHECK(stats.target_read_bytes == 120);
+   TEST_CHECK(stats.target_written_bytes == 107);
+   TEST_CHECK(stats.traffic_bytes[SOCKD_STATS_PROTOCOL_TCP]
+                                 [SOCKD_STATS_DIRECTION_CLIENT_TO_TARGET]
+         == 10);
+   TEST_CHECK(stats.traffic_bytes[SOCKD_STATS_PROTOCOL_TCP]
+                                 [SOCKD_STATS_DIRECTION_TARGET_TO_CLIENT]
+         == 20);
+   TEST_CHECK(stats.traffic_bytes[SOCKD_STATS_PROTOCOL_UDP]
+                                 [SOCKD_STATS_DIRECTION_CLIENT_TO_TARGET]
+         == 30);
+   TEST_CHECK(stats.traffic_bytes[SOCKD_STATS_PROTOCOL_UDP]
+                                 [SOCKD_STATS_DIRECTION_TARGET_TO_CLIENT]
+         == 40);
+   TEST_CHECK(stats.traffic_bytes[SOCKD_STATS_PROTOCOL_UNKNOWN]
+                                 [SOCKD_STATS_DIRECTION_CLIENT_TO_TARGET]
+         == 50);
+   TEST_CHECK(stats.traffic_bytes[SOCKD_STATS_PROTOCOL_UNKNOWN]
+                                 [SOCKD_STATS_DIRECTION_TARGET_TO_CLIENT]
+         == 60);
+
+   stats.traffic_bytes[SOCKD_STATS_PROTOCOL_TCP]
+                      [SOCKD_STATS_DIRECTION_CLIENT_TO_TARGET] = UINT64_MAX - 1;
+   sockd_stats_add_io(&stats, SOCKS_TCP, 2, 0, 0, 0);
+   TEST_CHECK(stats.traffic_bytes[SOCKD_STATS_PROTOCOL_TCP]
+                                 [SOCKD_STATS_DIRECTION_CLIENT_TO_TARGET]
+         == UINT64_MAX);
+}
+
+static void
+test_udp_datagram_size_histograms(void)
+{
+   static const uint64_t expected_bounds[] = {
+      UINT64_C(64), UINT64_C(128), UINT64_C(256), UINT64_C(512),
+      UINT64_C(1024), UINT64_C(1280), UINT64_C(1500), UINT64_C(2048),
+      UINT64_C(4096), UINT64_C(8192), UINT64_C(16384), UINT64_C(32768),
+      UINT64_C(65507), UINT64_C(65535)
+   };
+   sockd_stats_size_histogram_t *histogram;
+   sockd_stats_t stats;
+   size_t bucket;
+
+   TEST_CHECK(ELEMENTS(expected_bounds)
+         == SOCKD_STATS_DATAGRAM_SIZE_BUCKET_COUNT);
+   for (bucket = 0; bucket < ELEMENTS(expected_bounds); ++bucket)
+      TEST_CHECK(sockd_stats_datagram_size_bucket_upper_bounds[bucket]
+            == expected_bounds[bucket]);
+
+   sockd_stats_init(&stats, (time_t)100);
+   sockd_stats_observe_udp_datagram_size(
+      &stats, SOCKD_STATS_DIRECTION_CLIENT_TO_TARGET, UINT64_C(64));
+   sockd_stats_observe_udp_datagram_size(
+      &stats, SOCKD_STATS_DIRECTION_CLIENT_TO_TARGET, UINT64_C(1501));
+   sockd_stats_observe_udp_datagram_size(
+      &stats, SOCKD_STATS_DIRECTION_CLIENT_TO_TARGET, UINT64_C(70000));
+   sockd_stats_observe_udp_datagram_size(
+      &stats, SOCKD_STATS_DIRECTION_TARGET_TO_CLIENT, UINT64_C(0));
+   sockd_stats_observe_udp_datagram_size(
+      &stats, (sockd_stats_direction_t)UINT_MAX, UINT64_C(128));
+
+   histogram = &stats.udp_datagram_size[
+      SOCKD_STATS_DIRECTION_CLIENT_TO_TARGET];
+   TEST_CHECK(histogram->count == 3);
+   TEST_CHECK(histogram->sum_bytes == UINT64_C(71565));
+   TEST_CHECK(histogram->cumulative_bucket_counts[0] == 1);
+   TEST_CHECK(histogram->cumulative_bucket_counts[6] == 1);
+   TEST_CHECK(histogram->cumulative_bucket_counts[7] == 2);
+   TEST_CHECK(histogram->cumulative_bucket_counts[
+         SOCKD_STATS_DATAGRAM_SIZE_BUCKET_COUNT - 1] == 2);
+   TEST_CHECK(stats.udp_datagram_size[
+         SOCKD_STATS_DIRECTION_TARGET_TO_CLIENT].count == 1);
+   TEST_CHECK(stats.udp_datagram_size[
+         SOCKD_STATS_DIRECTION_TARGET_TO_CLIENT]
+            .cumulative_bucket_counts[0] == 1);
+   TEST_CHECK(stats.udp_datagram_size[SOCKD_STATS_DIRECTION_UNKNOWN].count
+         == 1);
+
+   histogram = &stats.udp_datagram_size[
+      SOCKD_STATS_DIRECTION_TARGET_TO_CLIENT];
+   histogram->count = UINT64_MAX;
+   histogram->sum_bytes = UINT64_MAX - UINT64_C(1);
+   histogram->cumulative_bucket_counts[0] = UINT64_MAX;
+   sockd_stats_observe_udp_datagram_size(
+      &stats, SOCKD_STATS_DIRECTION_TARGET_TO_CLIENT, UINT64_C(2));
+   TEST_CHECK(histogram->count == UINT64_MAX);
+   TEST_CHECK(histogram->sum_bytes == UINT64_MAX);
+   TEST_CHECK(histogram->cumulative_bucket_counts[0] == UINT64_MAX);
+}
+
+static void
+test_io_outcome_updates(void)
+{
+   sockd_stats_t stats;
+
+   sockd_stats_init(&stats, (time_t)100);
+   sockd_stats_add_io_outcome(&stats, SOCKS_TCP,
+                              SOCKD_STATS_IO_SIDE_CLIENT,
+                              SOCKD_STATS_IO_READ_ERROR, 2);
+   sockd_stats_add_io_outcome(&stats, SOCKS_TCP,
+                              SOCKD_STATS_IO_SIDE_TARGET,
+                              SOCKD_STATS_IO_WRITE_ERROR, 3);
+   sockd_stats_add_io_outcome(&stats, SOCKS_UDP,
+                              SOCKD_STATS_IO_SIDE_CLIENT,
+                              SOCKD_STATS_IO_ZERO_WRITE, 4);
+   sockd_stats_add_io_outcome(&stats, SOCKS_UDP,
+                              SOCKD_STATS_IO_SIDE_TARGET,
+                              SOCKD_STATS_IO_PARTIAL_WRITE, 5);
+   sockd_stats_add_io_outcome(&stats, INT_MAX,
+                              (sockd_stats_io_side_t)UINT_MAX,
+                              (sockd_stats_io_outcome_t)UINT_MAX, 6);
+
+   TEST_CHECK(stats.io_outcomes[SOCKD_STATS_PROTOCOL_TCP]
+                                 [SOCKD_STATS_IO_SIDE_CLIENT]
+                                 [SOCKD_STATS_IO_READ_ERROR] == 2);
+   TEST_CHECK(stats.io_outcomes[SOCKD_STATS_PROTOCOL_TCP]
+                                 [SOCKD_STATS_IO_SIDE_TARGET]
+                                 [SOCKD_STATS_IO_WRITE_ERROR] == 3);
+   TEST_CHECK(stats.io_outcomes[SOCKD_STATS_PROTOCOL_UDP]
+                                 [SOCKD_STATS_IO_SIDE_CLIENT]
+                                 [SOCKD_STATS_IO_ZERO_WRITE] == 4);
+   TEST_CHECK(stats.io_outcomes[SOCKD_STATS_PROTOCOL_UDP]
+                                 [SOCKD_STATS_IO_SIDE_TARGET]
+                                 [SOCKD_STATS_IO_PARTIAL_WRITE] == 5);
+   TEST_CHECK(stats.io_outcomes[SOCKD_STATS_PROTOCOL_UNKNOWN]
+                                 [SOCKD_STATS_IO_SIDE_UNKNOWN]
+                                 [SOCKD_STATS_IO_OUTCOME_UNKNOWN] == 6);
+
+   stats.io_outcomes[SOCKD_STATS_PROTOCOL_TCP]
+                    [SOCKD_STATS_IO_SIDE_CLIENT]
+                    [SOCKD_STATS_IO_READ_ERROR] = UINT64_MAX - 1;
+   sockd_stats_add_io_outcome(&stats, SOCKS_TCP,
+                              SOCKD_STATS_IO_SIDE_CLIENT,
+                              SOCKD_STATS_IO_READ_ERROR, 5);
+   TEST_CHECK(stats.io_outcomes[SOCKD_STATS_PROTOCOL_TCP]
+                                 [SOCKD_STATS_IO_SIDE_CLIENT]
+                                 [SOCKD_STATS_IO_READ_ERROR] == UINT64_MAX);
+}
+
 
 static void
 test_target_connect_updates(void)
@@ -609,14 +777,23 @@ test_json_snapshot(void)
    sockd_stats_add_negotiation(&stats, SOCKD_STATS_NEGOTIATION_TIMEOUT, 1);
    sockd_stats_add_request(&stats, SOCKS_CONNECT, IO_NOERROR, 1);
    sockd_stats_add_request(&stats, SOCKS_UDPASSOCIATE, IO_BLOCK, 2);
-   sockd_stats_add_session_started(&stats, SOCKS_TCP, 1);
-   sockd_stats_add_session_closed(&stats, SOCKS_TCP, IO_CLOSE, 1);
+   sockd_stats_add_session_started(&stats, SOCKS_TCP, AF_INET6, 1);
+   sockd_stats_add_session_closed(&stats, SOCKS_TCP, AF_INET6, IO_CLOSE, 1);
    sockd_stats_add_target_connect_attempt(&stats, 1);
    sockd_stats_add_target_connect_result(&stats, 0, 1);
    sockd_stats_add_udp_received(&stats, SOCKD_STATS_UDP_CLIENT_TO_TARGET, 2);
    sockd_stats_add_udp_forwarded(&stats, SOCKD_STATS_UDP_CLIENT_TO_TARGET, 1);
    sockd_stats_add_udp_drop(&stats, SOCKD_STATS_UDP_CLIENT_TO_TARGET,
                             SOCKD_STATS_UDP_DROP_BLOCKED, 1);
+   sockd_stats_add_io(&stats, SOCKS_TCP, 11, 10, 22, 20);
+   sockd_stats_observe_udp_datagram_size(
+      &stats, SOCKD_STATS_DIRECTION_CLIENT_TO_TARGET, 512);
+   sockd_stats_add_io_outcome(&stats, SOCKS_TCP,
+                              SOCKD_STATS_IO_SIDE_CLIENT,
+                              SOCKD_STATS_IO_READ_ERROR, 2);
+   sockd_stats_add_io_outcome(&stats, SOCKS_UDP,
+                              SOCKD_STATS_IO_SIDE_TARGET,
+                              SOCKD_STATS_IO_PARTIAL_WRITE, 1);
    sockd_stats_set_worker_capacity(&stats, PROC_IO, 2, 64, 60);
    sockd_stats_add_worker_spawn_failure(&stats, PROC_IO, 1);
    sockd_stats_add_auth(&stats, AUTHMETHOD_UNAME, 0, 1);
@@ -631,7 +808,7 @@ test_json_snapshot(void)
    TEST_CHECK(length > 0);
    TEST_CHECK((size_t)length == strlen(json));
    TEST_CHECK(strstr(json, "\"schema_version\":1") != NULL);
-   TEST_CHECK(strstr(json, "\"schema_revision\":4") != NULL);
+   TEST_CHECK(strstr(json, "\"schema_revision\":5") != NULL);
    TEST_CHECK(strstr(json, "\"server_version\":\"" VERSION "\"") != NULL);
    TEST_CHECK(strstr(json, "\"snapshot_time\":130") != NULL);
    TEST_CHECK(strstr(json, "\"started_at\":100") != NULL);
@@ -686,6 +863,26 @@ test_json_snapshot(void)
                                 "\"sum_microseconds\":0,"
                                 "\"cumulative_bucket_counts\":[0,0,0,")
          != NULL);
+   TEST_CHECK(strstr(json, "\"traffic\":{\"bytes\":{") != NULL);
+   TEST_CHECK(strstr(json, "\"tcp\":{\"client_to_target_total\":11,"
+                                "\"target_to_client_total\":22}") != NULL);
+   TEST_CHECK(strstr(json, "\"sessions_by_address_family\":{") != NULL);
+   TEST_CHECK(strstr(json, "\"ipv6\":{\"started_total\":1,"
+                                "\"active\":0,\"closed_total\":1,"
+                                "\"errors_total\":0}") != NULL);
+   TEST_CHECK(strstr(json, "\"udp_datagram_size\":{\"unit\":\"bytes\","
+                                "\"bucket_upper_bounds\":[64,128,256,512,")
+         != NULL);
+   TEST_CHECK(strstr(json, "\"client_to_target\":{\"count\":1,"
+                                "\"sum_bytes\":512,"
+                                "\"cumulative_bucket_counts\":[0,0,0,1,")
+         != NULL);
+   TEST_CHECK(strstr(json, "\"io_outcomes\":{") != NULL);
+   TEST_CHECK(strstr(json, "\"client\":{\"read_errors_total\":2,"
+                                "\"write_errors_total\":0,"
+                                "\"zero_writes_total\":0,"
+                                "\"partial_writes_total\":0,"
+                                "\"unknown_total\":0}") != NULL);
 
    TEST_CHECK(sockd_stats_json(&stats, (time_t)130,
                                exact, (size_t)length + 1) == length);
@@ -906,6 +1103,9 @@ main(void)
    test_request_status_taxonomy();
    test_detailed_session_updates();
    test_session_close_taxonomy();
+   test_traffic_byte_updates();
+   test_udp_datagram_size_histograms();
+   test_io_outcome_updates();
    test_target_connect_updates();
    test_udp_datagram_updates();
    test_worker_capacity_updates();

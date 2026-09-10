@@ -3661,7 +3661,7 @@ io_delete(mother, io, badfd, status)
 
    sockd_stats_update_session_closed(io->state.protocol, status, 1);
    sockd_stats_update_latency(SOCKD_STATS_LATENCY_SESSION,
-                              &io->state.time.established,
+                              &io->state.time.accepted,
                               &tnow);
 
 #if SOCKS_SERVER

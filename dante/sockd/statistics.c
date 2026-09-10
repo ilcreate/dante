@@ -694,6 +694,8 @@ sockd_stats_observe_latency(sockd_stats_t *stats,
    histogram = &stats->latency[latency];
    add_counter(&histogram->count, 1);
    add_counter(&histogram->sum_microseconds, duration);
+
+   /* count is the implicit +Inf bucket; stored buckets are cumulative. */
    for (bucket = 0; bucket < SOCKD_STATS_LATENCY_BUCKET_COUNT; ++bucket) {
       if (duration <= sockd_stats_latency_bucket_upper_bounds[bucket])
          add_counter(&histogram->cumulative_bucket_counts[bucket], 1);

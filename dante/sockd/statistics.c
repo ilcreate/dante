@@ -450,6 +450,7 @@ normalize_udp_direction(const sockd_stats_udp_direction_t direction)
    return SOCKD_STATS_UDP_DIRECTION_UNKNOWN;
 }
 
+#if !SOCKD_STATS_TEST
 static sockd_stats_direction_t
 traffic_direction_from_udp(const sockd_stats_udp_direction_t direction)
 {
@@ -503,6 +504,7 @@ udp_write_side(const sockd_stats_udp_direction_t direction)
 
    return SOCKD_STATS_IO_SIDE_UNKNOWN;
 }
+#endif /* !SOCKD_STATS_TEST */
 
 static sockd_stats_udp_drop_t
 normalize_udp_drop(const sockd_stats_udp_drop_t reason)
@@ -679,6 +681,31 @@ sockd_stats_add_udp_forwarded(sockd_stats_t *stats,
 {
    add_counter(&stats->udp[normalize_udp_direction(direction)].forwarded,
                value);
+}
+
+void
+sockd_stats_add_udp_forwarded_io(sockd_stats_t *stats,
+                                 const sockd_stats_udp_direction_t direction,
+                                 const uint64_t bytes_read,
+                                 const uint64_t bytes_written)
+{
+   sockd_stats_add_udp_forwarded(stats, direction, 1);
+
+   switch (normalize_udp_direction(direction)) {
+      case SOCKD_STATS_UDP_CLIENT_TO_TARGET:
+         sockd_stats_add_io(stats, SOCKS_UDP,
+                            bytes_read, 0, 0, bytes_written);
+         break;
+
+      case SOCKD_STATS_UDP_TARGET_TO_CLIENT:
+         sockd_stats_add_io(stats, SOCKS_UDP,
+                            0, bytes_written, bytes_read, 0);
+         break;
+
+      case SOCKD_STATS_UDP_DIRECTION_UNKNOWN:
+      case SOCKD_STATS_UDP_DIRECTION_COUNT:
+         break;
+   }
 }
 
 void
@@ -1036,14 +1063,16 @@ sockd_stats_update_udp_received(const sockd_stats_udp_direction_t direction,
 
 void
 sockd_stats_update_udp_forwarded(const sockd_stats_udp_direction_t direction,
-                                 const uint64_t value)
+                                 const uint64_t bytes_read,
+                                 const uint64_t bytes_written)
 {
    int saved_errno;
 
    if (sockscf.shmeminfo == NULL)
       return;
    sockd_stats_lock(&saved_errno);
-   sockd_stats_add_udp_forwarded(&sockscf.shmeminfo->stats, direction, value);
+   sockd_stats_add_udp_forwarded_io(&sockscf.shmeminfo->stats, direction,
+                                    bytes_read, bytes_written);
    sockd_stats_unlock(saved_errno);
 }
 

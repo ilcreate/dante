@@ -4961,6 +4961,9 @@ void sockd_stats_add_udp_received(sockd_stats_t *stats,
 void sockd_stats_add_udp_forwarded(sockd_stats_t *stats,
                                    sockd_stats_udp_direction_t direction,
                                    uint64_t value);
+void sockd_stats_add_udp_forwarded_io(
+   sockd_stats_t *stats, sockd_stats_udp_direction_t direction,
+   uint64_t bytes_read, uint64_t bytes_written);
 void sockd_stats_add_udp_receive_error(sockd_stats_t *stats,
                                        sockd_stats_udp_direction_t direction,
                                        uint64_t value);
@@ -5006,7 +5009,8 @@ void sockd_stats_update_target_connect_result(int error, uint64_t value);
 void sockd_stats_update_udp_received(sockd_stats_udp_direction_t direction,
                                      uint64_t bytes);
 void sockd_stats_update_udp_forwarded(sockd_stats_udp_direction_t direction,
-                                      uint64_t value);
+                                      uint64_t bytes_read,
+                                      uint64_t bytes_written);
 void sockd_stats_update_udp_receive_error(
    sockd_stats_udp_direction_t direction, uint64_t value);
 void sockd_stats_update_udp_drop(sockd_stats_udp_direction_t direction,

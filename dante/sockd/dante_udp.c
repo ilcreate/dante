@@ -1030,7 +1030,9 @@ io_udp_client2target(control, client, twotargets, cauth, state,
    }
 
    SASSERTX(w == (ssize_t)payloadlen);
-   sockd_stats_update_udp_forwarded(SOCKD_STATS_UDP_CLIENT_TO_TARGET, 1);
+   sockd_stats_update_udp_forwarded(SOCKD_STATS_UDP_CLIENT_TO_TARGET,
+                                    recvflags.fromsocket,
+                                    sendtoflags.tosocket);
 
    iolog(packetrule,
          state,
@@ -1441,7 +1443,9 @@ io_udp_target2client(control, client, twotargets, state,
    }
 
    SASSERTX(w == (ssize_t)payloadlen);
-   sockd_stats_update_udp_forwarded(SOCKD_STATS_UDP_TARGET_TO_CLIENT, 1);
+   sockd_stats_update_udp_forwarded(SOCKD_STATS_UDP_TARGET_TO_CLIENT,
+                                    recvflags.fromsocket,
+                                    sendtoflags.tosocket);
 
    iolog(packetrule,
          state,

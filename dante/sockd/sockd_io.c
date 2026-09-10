@@ -3513,11 +3513,13 @@ io_update(timenow, bwused, protocol, i_read, i_written,
             0 : (unsigned long)rule->bw_shmid,
         (unsigned long)packetrule->mstats_shmid);
 
-   sockd_stats_update_io(protocol,
-                         i_read == NULL ? 0 : i_read->bytes,
-                         i_written == NULL ? 0 : i_written->bytes,
-                         e_read == NULL ? 0 : e_read->bytes,
-                         e_written == NULL ? 0 : e_written->bytes);
+   if (protocol != SOCKS_UDP) {
+      sockd_stats_update_io(protocol,
+                            i_read == NULL ? 0 : i_read->bytes,
+                            i_written == NULL ? 0 : i_written->bytes,
+                            e_read == NULL ? 0 : e_read->bytes,
+                            e_written == NULL ? 0 : e_written->bytes);
+   }
 
    if (rule != NULL && rule->bw_shmid != 0 && bwused != 0) {
       SASSERTX(rule->bw != NULL);

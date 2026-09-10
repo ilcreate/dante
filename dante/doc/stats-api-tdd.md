@@ -1,10 +1,12 @@
-Last verified against commit: 5433322b4c52367df1a0cdc3f7d4c3e6f6236767
+Last verified against commit: 35d9ebee3f37fead6099eb4625f85bb63e2b455a
 Latest v1 revision 2 cycle verified against commit:
 11448e34dc558a425748f56c832c366baa5051c2
 Latest v1 revision 3 cycle verified against commit:
 35a8cd405789be5bedcd870ca52f2a9a6528500b
 Latest v1 revision 4 cycle verified against commit:
 47fe4aeba12c59dc770da74d9516cd741302392a
+Latest v1 revision 5 cycle verified against commit:
+35d9ebee3f37fead6099eb4625f85bb63e2b455a
 
 # Statistics API TDD evidence
 
@@ -229,3 +231,63 @@ Tests cover inclusive exact boundaries, cumulative bucket ordering, zero and
 above-largest durations, invalid/missing/reversed timestamps, signed-time and
 arithmetic overflow cases, saturating count/sum/buckets, JSON shape, and the
 existing HTTP/Unix-socket contract.
+
+## Version 1 revision 5 protocol and traffic extension
+
+### Scope
+
+This cycle added six byte counters by TCP/UDP/unknown and traffic direction,
+twelve lifecycle values by client IPv4/IPv6/unknown family, three UDP
+datagram-size histograms, and 45 I/O outcome counters by protocol and socket
+side. The 111 new fixed numeric series bring the detailed total to 408. No DNS
+cache, worker lifecycle/backpressure, SOCKS protocol-detail, or control-plane
+task was started.
+
+### RED evidence
+
+The initial test-only checkpoint is commit
+`2e0850256d61ea403c5d751bdc4b0b7d1062f3d1`. Its valid standalone build failed
+because revision 5 types, fields, bounds, mutation functions, and changed
+session signatures did not exist. The tests specified normalization,
+saturation, exact UDP bucket boundaries, cumulative JSON buckets, compatibility
+aggregates, and maximum-size snapshot serialization.
+
+A live UDP round-trip then found that the original generic I/O aggregation did
+not publish per-target UDP bytes. Regression checkpoint
+`c5dd5d463fe46bf368ca55cc94c7152b56487369` failed at compile time against a
+new pure forwarded-UDP byte transition before its production implementation
+was added.
+
+### GREEN and refactor evidence
+
+Implementation checkpoint `6e288ab1ff4ec591f08526c364862d20138e2f5b`
+added the revision 5 shared storage, JSON contract, and TCP/UDP producers.
+Refactor checkpoint `e4b36ac906614e793cc0b0ac1bd4ba00f90ab066`
+changed the UDP histogram hot path from up to 14 bucket writes to one raw
+finite-bucket write; serialization still returns cumulative counts.
+
+Regression fix `35d9ebee3f37fead6099eb4625f85bb63e2b455a` records
+forwarded UDP count and the actual socket read/write byte deltas under one lock
+and excludes UDP from the unreliable legacy aggregate path. The same path
+continues to update all four compatible byte counters.
+
+### Final verification
+
+| Check | Result |
+|---|---|
+| Feature unit and Unix-socket integration runner | Passed |
+| Full build (`make -j2`) | Passed |
+| Strict C17 compile and test run | Passed; only pre-existing repository diagnostics |
+| AddressSanitizer and UndefinedBehaviorSanitizer | Passed with no findings |
+| `sockd/statistics.c` line coverage | 94.42% |
+| Function coverage | 98.18% |
+| Branch coverage | 82.36% |
+| Region coverage | 72.42%; production-only shared wrappers remain excluded from the standalone build |
+
+The live schema revision 5 test completed one SOCKS5 UDP ASSOCIATE round-trip
+through a local echo server. The API reported one receive and one forward in
+each direction, client-to-target size 27 bytes, target-to-client size 17 bytes,
+directional UDP byte totals of 27 and 17, compatible aggregate read/write
+totals of 27/17/17/27, and one completed IPv4 session. Dante remained able to
+serve repeated API requests and the temporary listener was shut down after
+verification.

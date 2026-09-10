@@ -1,4 +1,4 @@
-Last verified against implementation commit: 47fe4ae
+Last verified against implementation commit: 35d9ebe
 
 # Dante statistics API
 
@@ -51,19 +51,21 @@ One request is served per connection. The implementation reads at most 4096
 bytes once and requires the request line to fit within 511 bytes. It waits up
 to one second for the first readable data.
 
-## JSON schema version 1, revision 4
+## JSON schema version 1, revision 5
 
-Revision 4 additively extends revision 3. It preserves every existing path and
-adds seven fixed-cardinality latency histograms. Existing consumers can ignore
-unknown members. Consumers should check `schema_version == 1` and require the
-minimum revision for the families they consume.
+Revision 5 additively extends revision 4. It preserves every existing path and
+adds bounded protocol/direction byte counters, session lifecycle by client
+address family, UDP datagram-size histograms, and I/O outcomes by protocol and
+socket side. Existing consumers can ignore unknown members. Consumers should
+check `schema_version == 1` and require the minimum revision for the families
+they consume.
 
 A successful response has this shape:
 
 ```json
 {
   "schema_version": 1,
-  "schema_revision": 4,
+  "schema_revision": 5,
   "server_version": "1.4.4",
   "snapshot_time": 1788897413,
   "started_at": 1788897390,
@@ -217,6 +219,42 @@ A successful response has this shape:
       "session": {"count": 8, "sum_microseconds": 2600000, "cumulative_bucket_counts": [0, 0, 0, 0, 0, 1, 2, 3, 5, 6, 7, 8, 8, 8, 8, 8, 8, 8]},
       "dns_resolver": {"count": 5, "sum_microseconds": 7200, "cumulative_bucket_counts": [0, 0, 2, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5]},
       "authentication": {"count": 12, "sum_microseconds": 900, "cumulative_bucket_counts": [8, 11, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12]}
+    },
+    "traffic": {
+      "bytes": {
+        "tcp": {"client_to_target_total": 900, "target_to_client_total": 700},
+        "udp": {"client_to_target_total": 300, "target_to_client_total": 200},
+        "unknown": {"client_to_target_total": 0, "target_to_client_total": 0}
+      },
+      "sessions_by_address_family": {
+        "ipv4": {"started_total": 8, "active": 1, "closed_total": 7, "errors_total": 1},
+        "ipv6": {"started_total": 2, "active": 1, "closed_total": 1, "errors_total": 0},
+        "unknown": {"started_total": 0, "active": 0, "closed_total": 0, "errors_total": 0}
+      },
+      "udp_datagram_size": {
+        "unit": "bytes",
+        "bucket_upper_bounds": [64, 128, 256, 512, 1024, 1280, 1500, 2048, 4096, 8192, 16384, 32768, 65507, 65535],
+        "client_to_target": {"count": 3, "sum_bytes": 284, "cumulative_bucket_counts": [1, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]},
+        "target_to_client": {"count": 2, "sum_bytes": 192, "cumulative_bucket_counts": [0, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]},
+        "unknown": {"count": 0, "sum_bytes": 0, "cumulative_bucket_counts": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}
+      },
+      "io_outcomes": {
+        "tcp": {
+          "client": {"read_errors_total": 0, "write_errors_total": 1, "zero_writes_total": 0, "partial_writes_total": 1, "unknown_total": 0},
+          "target": {"read_errors_total": 1, "write_errors_total": 0, "zero_writes_total": 0, "partial_writes_total": 0, "unknown_total": 0},
+          "unknown": {"read_errors_total": 0, "write_errors_total": 0, "zero_writes_total": 0, "partial_writes_total": 0, "unknown_total": 0}
+        },
+        "udp": {
+          "client": {"read_errors_total": 0, "write_errors_total": 0, "zero_writes_total": 0, "partial_writes_total": 0, "unknown_total": 0},
+          "target": {"read_errors_total": 0, "write_errors_total": 0, "zero_writes_total": 0, "partial_writes_total": 0, "unknown_total": 0},
+          "unknown": {"read_errors_total": 0, "write_errors_total": 0, "zero_writes_total": 0, "partial_writes_total": 0, "unknown_total": 0}
+        },
+        "unknown": {
+          "client": {"read_errors_total": 0, "write_errors_total": 0, "zero_writes_total": 0, "partial_writes_total": 0, "unknown_total": 0},
+          "target": {"read_errors_total": 0, "write_errors_total": 0, "zero_writes_total": 0, "partial_writes_total": 0, "unknown_total": 0},
+          "unknown": {"read_errors_total": 0, "write_errors_total": 0, "zero_writes_total": 0, "partial_writes_total": 0, "unknown_total": 0}
+        }
+      }
     }
   }
 }
@@ -269,8 +307,10 @@ Revision 3 adds 100 fixed series: target-connect attempts/results, UDP
 datagrams/errors/drops by direction, worker capacity and spawn failures,
 authentication outcomes, ACL decisions, and DNS backend-query outcomes. The
 revision 4 latency families add 140 series (seven histograms, each with 18
-finite buckets, `count`, and `sum`) for 297 fixed detailed numeric series in
-total. The complete semantics and exporter mappings are in
+finite buckets, `count`, and `sum`). Revision 5 adds 111 series: six traffic
+byte counters, twelve address-family lifecycle values, 48 UDP histogram
+values, and 45 I/O outcomes. The API now exposes 408 fixed detailed numeric
+series in total. The complete semantics and exporter mappings are in
 [`metrics.md`](metrics.md).
 
 Unknown internal values are normalized into bounded `unknown` or `other`
@@ -298,7 +338,8 @@ The exporter should:
    or connection close;
 3. require HTTP 200, `schema_version == 1`, and the minimum schema revision
    required by the selected families (`2` for lifecycle details, `3` for the
-   operational families, `4` for latency histograms);
+   operational families, `4` for latency histograms, `5` for protocol and
+   traffic breakdown);
 4. expose Dante counter values directly instead of accumulating them again;
 5. let Prometheus handle counter resets, using `started_at` as supporting reset
    context;
@@ -340,8 +381,9 @@ the values returned by Dante directly, not maintain a second accumulator.
 - The monitor serves one connection synchronously, so a slow same-UID client
   can delay monitor work.
 - Statistics updates take a global process-shared lock on the I/O hot path,
-  including per-datagram revision 3 and per-lifecycle revision 4 updates, and
-  when `-S` is not configured.
+  including per-datagram revision 3/5 and per-lifecycle revision 4/5 updates,
+  and when `-S` is not configured. UDP receive and histogram updates share one
+  lock, as do successful UDP forwarding and byte updates.
 - Worker gauges are periodic snapshots; target attempts can exceed outcomes
   while nonblocking connects are in flight.
 - `stats_wait_readable()` currently uses a fixed stack `fd_set`; high-descriptor

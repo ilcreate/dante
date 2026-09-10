@@ -1,4 +1,4 @@
-Last verified against implementation commit: 47fe4ae
+Last verified against implementation commit: 35d9ebe
 
 # Statistics API architecture
 
@@ -37,6 +37,9 @@ The mother and worker processes call the API declared in `include/sockd.h`:
   DNS events without exposing raw identities, addresses, errors, or rule IDs;
 - revision 4 latency wrappers validate monotonic timestamp pairs and update
   fixed cumulative histograms;
+- revision 5 wrappers classify traffic by protocol/direction, sessions by the
+  client peer address family, UDP receive sizes by direction, and I/O outcomes
+  by protocol/socket side;
 - the corresponding `sockd_stats_add*()` functions contain pure transition
 rules used by production wrappers and standalone tests.
 
@@ -53,11 +56,12 @@ Producer locations are:
 | Mother | `sockd/sockd.c`, main accept loop | accepted client, no-negotiator drop |
 | Negotiation | `sockd/sockd_negotiate.c`, `run_negotiate()` | success, EOF, error, timeout, unknown |
 | Request | `sockd/sockd_request.c`, `run_request()` | command by normalized request result |
-| I/O | `sockd/sockd_io.c`, `recv_io()` | session admitted, classified by protocol |
-| I/O | `sockd/sockd_io.c`, `io_update()` | four directional byte deltas |
+| I/O | `sockd/sockd_io.c`, `recv_io()` | session admitted, classified by protocol and client peer address family |
+| I/O | `sockd/sockd_io.c`, `io_update()` | TCP socket byte deltas and protocol/direction traffic bytes |
 | I/O | `sockd/sockd_io.c`, `io_delete()` | per-protocol closure, normalized close reason, selected errors |
 | Request/I/O | `sockd/sockd_request.c`, `dorequest()`; `sockd/sockd_io.c`, connect completion/deletion | target-connect attempts and immediate/deferred outcomes |
-| I/O | `sockd/dante_udp.c`, packet forwarding functions | UDP datagrams, receive errors, and drops by direction |
+| I/O | `sockd/dante_udp.c`, packet forwarding functions | UDP receives, sizes, successful-forward byte deltas, drops, and I/O outcomes by direction/side |
+| I/O | `sockd/sockd_tcp.c`, forwarding loop | TCP read/write errors and zero/partial writes by socket side |
 | Mother | `sockd/sockd_child.c`, `childcheck()` | non-retiring worker capacity and creation failures |
 | Auth/rules | `sockd/accesscheck.c`, `sockd/rule.c` | auth results and ACL pass/block decisions |
 | Resolver | `lib/hostcache.c` | forward/reverse backend query results; cache hits excluded |
@@ -151,10 +155,22 @@ cumulative finite buckets. Bounds are compiled into the server and serialized
 once as shared metadata. Invalid, reversed, or incomplete timestamp pairs do
 not mutate the histogram.
 
+Revision 5 adds only fixed-size arrays. Successful TCP read deltas populate
+the protocol/direction byte matrix through the existing byte-update lock. UDP
+receive count and size observation share one lock; successful forwarding count
+and its actual socket read/write byte deltas share another. This explicit UDP
+producer avoids the legacy per-target aggregation gap in `io_update()`.
+
+UDP size histograms store one raw finite-bucket increment per receive, plus a
+count and byte sum. Serialization calculates the cumulative 14-element array,
+so a packet adds at most one bucket mutation instead of touching every larger
+bucket on the packet hot path. Session lifecycle updates protocol and client
+address-family views atomically under the existing lifecycle lock.
+
 ## Compatibility model
 
-The wire schema stays at version 1. Revision 4 additively extends the revision
-3 `details` object; every earlier path and meaning remains present. This
+The wire schema stays at version 1. Revision 5 additively extends the revision
+4 `details` object; every earlier path and meaning remains present. This
 lets older clients ignore new members while detailed consumers can require a
 minimum revision. Internal enum values never become dynamic JSON keys:
 unrecognized commands/protocols map to `unknown`, and unrecognized results map
@@ -165,6 +181,8 @@ admission-time meaning. Revision 3 records true nonblocking CONNECT completion
 later in the I/O path instead of changing the compatibility field.
 Revision 4 measures the corresponding terminal intervals without changing any
 outcome-counter semantics.
+Revision 5 similarly preserves the four aggregate byte counters and adds a
+more specific view under `details.traffic`.
 
 ## Future exporter boundary
 
@@ -198,6 +216,10 @@ and synchronization internals.
 - Each latency observation adds another shared-lock acquisition at a lifecycle
   boundary; authentication and resolver-heavy workloads need contention
   testing before production rollout.
+- UDP size observations reuse the receive-event lock and update one finite
+  bucket; successful UDP byte accounting reuses the forwarded-event lock.
+  Zero/partial-write outcomes can still add a separate lock on exceptional
+  paths.
 - Target-connect attempts and outcomes can differ while connects are in flight
   or after abnormal worker death.
 - Worker capacity is sampled by `childcheck()`, not at every slot transition.

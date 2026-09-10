@@ -1,9 +1,9 @@
-Last verified against implementation commit: 47fe4ae
+Last verified against implementation commit: 35d9ebe
 
 # Statistics API metric dictionary
 
 This document is the canonical semantic dictionary for `GET /v1/stats` at
-schema version 1, revision 4. The API exposes raw cumulative values. A future
+schema version 1, revision 5. The API exposes raw cumulative values. A future
 Prometheus exporter should translate them without accumulating them again.
 
 ## Compatibility
@@ -13,6 +13,8 @@ Prometheus exporter should translate them without accumulating them again.
 - `schema_revision >= 3` provides target-connect, UDP, worker, authentication,
   ACL, and DNS families.
 - `schema_revision >= 4` provides the seven fixed latency histograms.
+- `schema_revision >= 5` provides protocol/direction traffic, client address
+  family sessions, UDP size histograms, and I/O outcomes.
 - Consumers of only the original aggregate fields may ignore
   `schema_revision` and unknown JSON members.
 - Consumers requiring detailed statistics should require
@@ -349,13 +351,126 @@ precedes the start, or the process dies before reaching the observation hook.
 Such cases are not recorded as zero latency. Equal valid timestamps record a
 zero-duration observation.
 
+## Protocol and traffic breakdown
+
+Revision 5 adds the fixed `details.traffic` object. It does not change the
+meaning of any original aggregate counter.
+
+### Bytes by protocol and direction
+
+```text
+details.traffic.bytes.<protocol>.<direction>_total
+```
+
+Protocols are `tcp`, `udp`, and `unknown`; directions are
+`client_to_target` and `target_to_client`. Suggested mapping:
+
+```text
+dante_traffic_bytes_total{protocol="<protocol>",direction="<direction>"}
+```
+
+These are payload bytes accepted at Dante's socket boundary. Direction is
+classified from the successful read: bytes read from the client are
+client-to-target, and bytes read from a target are target-to-client. TCP values
+come from normal I/O deltas. UDP values are committed only after the datagram
+has been forwarded successfully and use the actual socket read/write counts;
+the client-to-target read count includes the SOCKS UDP request header, while
+the target-to-client read count is the target datagram before Dante adds its
+SOCKS UDP response header. Do not add the two directional values to infer
+on-wire traffic or application delivery.
+
+### Sessions by client address family
+
+```text
+details.traffic.sessions_by_address_family.<family>.started_total
+details.traffic.sessions_by_address_family.<family>.active
+details.traffic.sessions_by_address_family.<family>.closed_total
+details.traffic.sessions_by_address_family.<family>.errors_total
+```
+
+Families are `ipv4`, `ipv6`, and `unknown`. Suggested mappings are
+`dante_sessions_started_by_address_family_total`,
+`dante_sessions_active_by_address_family`,
+`dante_sessions_closed_by_address_family_total`, and
+`dante_session_errors_by_address_family_total`, each with an
+`address_family` label.
+
+The family is the admitted client's peer address family from
+`io->src.raddr.ss_family`, not the target address family. This distinction is
+required for UDP because one association can communicate with IPv4 and IPv6
+targets. Start, close, active, and error semantics otherwise match the existing
+per-protocol session family.
+
+### UDP datagram-size histograms
+
+```text
+details.traffic.udp_datagram_size.unit
+details.traffic.udp_datagram_size.bucket_upper_bounds
+details.traffic.udp_datagram_size.<direction>.count
+details.traffic.udp_datagram_size.<direction>.sum_bytes
+details.traffic.udp_datagram_size.<direction>.cumulative_bucket_counts
+```
+
+Directions are `client_to_target`, `target_to_client`, and `unknown`. The 14
+inclusive finite byte bounds are:
+
+```text
+64, 128, 256, 512, 1024, 1280, 1500, 2048, 4096, 8192, 16384,
+32768, 65507, 65535
+```
+
+Suggested mapping is `dante_udp_datagram_size_bytes` with a `direction` label.
+Emit the returned finite buckets directly, use `count` as the `+Inf` bucket and
+histogram count, and use `sum_bytes` without unit conversion. The JSON buckets
+are cumulative even though Dante internally stores one raw finite-bucket
+increment per observation and computes cumulative values while serializing.
+
+An observation is created after each successful UDP socket receive, before
+later SOCKS parsing, ACL, DNS, or send processing. It therefore includes
+datagrams later dropped as malformed or blocked. Client-to-target sizes include
+the SOCKS UDP request header; target-to-client sizes are raw target datagrams.
+Apart from saturation, each direction's `count` should track the corresponding
+revision 3 `received_total`; it is independent of `forwarded_total`.
+
+### I/O outcomes by protocol and socket side
+
+```text
+details.traffic.io_outcomes.<protocol>.<side>.<outcome>_total
+```
+
+Protocols are `tcp`, `udp`, and `unknown`; sides are `client`, `target`, and
+`unknown`; outcomes are `read_errors`, `write_errors`, `zero_writes`,
+`partial_writes`, and `unknown`. Suggested mappings are:
+
+```text
+dante_io_read_errors_total{protocol="<protocol>",side="<side>"}
+dante_io_write_errors_total{protocol="<protocol>",side="<side>"}
+dante_io_zero_writes_total{protocol="<protocol>",side="<side>"}
+dante_io_partial_writes_total{protocol="<protocol>",side="<side>"}
+dante_io_unknown_outcomes_total{protocol="<protocol>",side="<side>"}
+```
+
+TCP errors cover terminal or temporary failed receive/write paths observed by
+the forwarding loop, including stored socket errors and non-normal shutdown
+failures. UDP read errors mirror failed receive calls. UDP write errors mirror
+the existing `send_error` drop classification at the destination side. Zero
+and partial writes are recorded at successful nonnegative send calls whose
+socket byte count is respectively zero or below the requested length.
+
+These outcome values are event counters, not mutually exclusive result
+classes. In particular, a zero or partial write also enters the surrounding
+write-error/drop path, so consumers must not sum every outcome as a total
+number of distinct failed operations.
+
 ## Cardinality and privacy contract
 
-Revision 4 contains 297 fixed detailed numeric series: the 157 revision 3
-series plus 140 latency values from seven histograms, each containing 18
-finite buckets, one count, and one sum. The shared bucket-bound array and unit
-string are metadata, not metric series. An exporter can initialize all numeric
-series to zero without discovering labels dynamically.
+Revision 5 contains 408 fixed detailed numeric series: the 297 revision 4
+series plus 111 traffic values. The new values comprise 6 protocol/direction
+byte counters, 12 address-family session values, 48 UDP histogram values
+(three directions times 14 finite buckets, count, and sum), and 45 I/O outcome
+values. Shared bucket-bound arrays and unit strings are metadata, not metric
+series. An exporter can initialize all numeric series to zero without
+discovering labels dynamically.
 
 Future revisions must not use these values as labels:
 
@@ -374,8 +489,9 @@ buckets rather than becoming new keys.
   normal `io_delete()` path.
 - `sessions_established_total` is retained for compatibility but represents
   admission to I/O, not target establishment.
-- UDP datagram accounting is available in revision 3, but protocol-specific
-  byte families are not. Do not derive datagrams from aggregate byte values.
+- UDP datagram counts and protocol-specific bytes represent different event
+  boundaries: size histograms observe receives, while UDP directional bytes
+  require successful forwarding. Do not derive datagrams from byte values.
 - Target attempts and results can differ while connects are pending or after
   abnormal worker death.
 - Worker capacity is eventually updated by the child-management scan, not an
@@ -388,3 +504,5 @@ buckets rather than becoming new keys.
   sums also make derived averages and quantiles lower-confidence.
 - Kernel backlog drops, firewall drops, retransmissions, and on-wire byte
   counts require operating-system telemetry outside this API.
+- Address-family lifecycle reports the client peer family, not the family of
+  every target contacted by a UDP association.

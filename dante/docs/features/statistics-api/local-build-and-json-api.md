@@ -85,6 +85,15 @@ curl --noproxy "*" --silent --show-error \
 jq '.details.latency'
 ```
 
+Show only revision 5 protocol and traffic details:
+
+```sh
+curl --noproxy "*" --silent --show-error \
+  --unix-socket /tmp/dante-stats.sock \
+  http://localhost/v1/stats |
+jq '.details.traffic'
+```
+
 ## Check counter updates
 
 Open and close a TCP connection without SOCKS negotiation:
@@ -117,12 +126,12 @@ curl --noproxy "" \
 
 ## JSON response
 
-`GET /v1/stats` returns schema version 1, revision 4:
+`GET /v1/stats` returns schema version 1, revision 5:
 
 ```json
 {
   "schema_version": 1,
-  "schema_revision": 4,
+  "schema_revision": 5,
   "server_version": "1.4.4",
   "snapshot_time": 1788982182,
   "started_at": 1788982152,
@@ -338,11 +347,48 @@ curl --noproxy "" \
       "session": {"count": 0, "sum_microseconds": 0, "cumulative_bucket_counts": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]},
       "dns_resolver": {"count": 0, "sum_microseconds": 0, "cumulative_bucket_counts": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]},
       "authentication": {"count": 0, "sum_microseconds": 0, "cumulative_bucket_counts": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}
+    },
+    "traffic": {
+      "bytes": {
+        "tcp": {"client_to_target_total": 0, "target_to_client_total": 0},
+        "udp": {"client_to_target_total": 0, "target_to_client_total": 0},
+        "unknown": {"client_to_target_total": 0, "target_to_client_total": 0}
+      },
+      "sessions_by_address_family": {
+        "ipv4": {"started_total": 0, "active": 0, "closed_total": 0, "errors_total": 0},
+        "ipv6": {"started_total": 0, "active": 0, "closed_total": 0, "errors_total": 0},
+        "unknown": {"started_total": 0, "active": 0, "closed_total": 0, "errors_total": 0}
+      },
+      "udp_datagram_size": {
+        "unit": "bytes",
+        "bucket_upper_bounds": [64, 128, 256, 512, 1024, 1280, 1500, 2048, 4096, 8192, 16384, 32768, 65507, 65535],
+        "client_to_target": {"count": 0, "sum_bytes": 0, "cumulative_bucket_counts": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]},
+        "target_to_client": {"count": 0, "sum_bytes": 0, "cumulative_bucket_counts": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]},
+        "unknown": {"count": 0, "sum_bytes": 0, "cumulative_bucket_counts": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}
+      },
+      "io_outcomes": {
+        "tcp": {
+          "client": {"read_errors_total": 0, "write_errors_total": 0, "zero_writes_total": 0, "partial_writes_total": 0, "unknown_total": 0},
+          "target": {"read_errors_total": 0, "write_errors_total": 0, "zero_writes_total": 0, "partial_writes_total": 0, "unknown_total": 0},
+          "unknown": {"read_errors_total": 0, "write_errors_total": 0, "zero_writes_total": 0, "partial_writes_total": 0, "unknown_total": 0}
+        },
+        "udp": {
+          "client": {"read_errors_total": 0, "write_errors_total": 0, "zero_writes_total": 0, "partial_writes_total": 0, "unknown_total": 0},
+          "target": {"read_errors_total": 0, "write_errors_total": 0, "zero_writes_total": 0, "partial_writes_total": 0, "unknown_total": 0},
+          "unknown": {"read_errors_total": 0, "write_errors_total": 0, "zero_writes_total": 0, "partial_writes_total": 0, "unknown_total": 0}
+        },
+        "unknown": {
+          "client": {"read_errors_total": 0, "write_errors_total": 0, "zero_writes_total": 0, "partial_writes_total": 0, "unknown_total": 0},
+          "target": {"read_errors_total": 0, "write_errors_total": 0, "zero_writes_total": 0, "partial_writes_total": 0, "unknown_total": 0},
+          "unknown": {"read_errors_total": 0, "write_errors_total": 0, "zero_writes_total": 0, "partial_writes_total": 0, "unknown_total": 0}
+        }
+      }
     }
   }
 }
 ```
 
-Timestamps and statistic values change at runtime. Latency bucket counts are
-already cumulative. `count` is the implicit `+Inf` bucket; bounds and sums are
-microseconds.
+Timestamps and statistic values change at runtime. Both histogram bucket arrays
+are already cumulative and each `count` is the implicit `+Inf` bucket. Latency
+bounds/sums are microseconds; UDP size bounds/sums are bytes. Detailed field
+semantics are in [`metrics.md`](metrics.md).

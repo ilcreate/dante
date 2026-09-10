@@ -130,7 +130,7 @@ domain stream socket.  The versioned endpoint
 .B GET /v1/stats
 returns a JSON snapshot containing server and schema versions, timestamps,
 uptime, process-shared counters, and gauges.  The current response uses schema
-version 1, revision 4.  The connection is closed after each response.  Other
+version 1, revision 5.  The connection is closed after each response.  Other
 paths return 404 and methods other than GET return 405.
 .PP
 The counters cover accepted and pre-negotiation dropped clients, negotiation
@@ -149,6 +149,13 @@ processing, target connection, first I/O, full accepted-to-close session,
 resolver backend, and executed authentication intervals.  Bounds and sums are
 reported in integer microseconds; each histogram count is its implicit
 infinite bucket.  Incomplete or invalid intervals are omitted.
+.PP
+Revision 5 adds byte counters by TCP/UDP and traffic direction, session
+lifecycle by client IPv4/IPv6 family, UDP datagram-size histograms, and
+read/write/zero-write/partial-write outcomes by protocol and socket side.
+All dimensions and histogram bounds are fixed.  UDP size observations count
+successful socket receives, while UDP directional bytes count successfully
+forwarded datagrams.
 .PP
 The compatibility field
 .B sessions_established_total

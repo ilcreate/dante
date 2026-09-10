@@ -1,4 +1,4 @@
-Last verified against implementation commit: 47fe4ae
+Last verified against implementation commit: 35d9ebe
 
 # Statistics API implementation context
 
@@ -17,11 +17,12 @@ Statistics collection currently runs even when the endpoint is disabled.
 Implemented behavior includes:
 
 - process-shared aggregate counters and active-session gauge;
-- JSON schema version 1, revision 4, preserving every original aggregate
+- JSON schema version 1, revision 5, preserving every original aggregate
   field;
 - fixed-cardinality negotiation, request, session, target-connect, UDP,
-  worker-capacity, authentication, ACL, DNS, and latency details suitable for
-  direct exporter translation;
+  worker-capacity, authentication, ACL, DNS, latency, protocol/direction
+  traffic, client address-family, UDP-size, and I/O-outcome details suitable
+  for direct exporter translation;
 - `GET /v1/stats` over a Unix domain stream socket;
 - HTTP/1.0 and HTTP/1.1 request-line parsing;
 - owner-only socket mode `0600`;
@@ -43,10 +44,14 @@ TCP listener, TLS, rate limiting, or per-rule/per-destination metric dimension.
   outcomes and durations.
 - `sockd/sockd_request.c`: records request results, durations, and
   direct/upstream-proxy target-connect attempts/durations.
-- `sockd/sockd_io.c`: records sessions, byte counts, closures, errors,
+- `sockd/sockd_io.c`: records sessions by protocol/client address family, TCP
+  byte counts, closures, errors,
   deferred target-connect outcomes, first-I/O latency, and full session
   duration.
-- `sockd/dante_udp.c`: records datagrams, receive errors, and classified drops.
+- `sockd/dante_udp.c`: records datagrams, receive sizes, successful-forward
+  bytes, I/O outcomes, receive errors, and classified drops.
+- `sockd/sockd_tcp.c`: records TCP read/write errors and zero/partial writes by
+  socket side.
 - `sockd/sockd_child.c`: publishes worker capacity and creation failures.
 - `sockd/accesscheck.c`, `sockd/rule.c`, and `lib/hostcache.c`: record executed
   authentication checks, ACL decisions, resolver backend results, and the
@@ -117,6 +122,11 @@ Stored inside the anonymous `sockscf.shmeminfo` mapping. It contains:
 - bounded authentication, ACL-phase, and DNS operation/result matrices.
 - seven fixed latency histograms with 18 cumulative finite buckets, count, and
   microsecond sum per histogram.
+- six byte counters by protocol and traffic direction;
+- twelve session values by client address family;
+- three UDP size histograms with 14 cumulative finite buckets, count, and byte
+  sum;
+- 45 I/O outcome counters by protocol, socket side, and bounded outcome.
 
 ### Mutation APIs
 
@@ -125,7 +135,8 @@ mutation interface. Typed `sockd_stats_add_negotiation()`,
 `sockd_stats_add_request()`, `sockd_stats_add_session_started()`,
 `sockd_stats_add_session_closed()`, and the revision 3 typed functions update
 bounded details. Revision 4 adds `sockd_stats_add_latency()` and
-`sockd_stats_update_latency()` for validated monotonic intervals. Their
+`sockd_stats_update_latency()` for validated monotonic intervals. Revision 5
+adds typed byte, address-family, UDP-size, and I/O-outcome mutations. Their
 process-shared `sockd_stats_update*()` wrappers take one lock per logical event
 and preserve the caller's `errno`.
 
@@ -180,7 +191,7 @@ under the same effective UID as the monitor unless the access model is changed.
 ## API and metrics contract
 
 The only successful request is `GET /v1/stats`. It returns JSON schema version
-1, revision 4, with server metadata, timestamps, compatible aggregates, and a
+1, revision 5, with server metadata, timestamps, compatible aggregates, and a
 fixed `details` taxonomy. Counter names end in `_total`. The complete
 field-level semantics and suggested future Prometheus mapping are in
 `docs/features/statistics-api/metrics.md`.
@@ -222,7 +233,7 @@ field-level semantics and suggested future Prometheus mapping are in
 ## Invariants
 
 - `schema_version` is `SOCKD_STATS_SCHEMA_VERSION` and currently equals 1.
-- `schema_revision` is `SOCKD_STATS_SCHEMA_REVISION` and currently equals 4.
+- `schema_revision` is `SOCKD_STATS_SCHEMA_REVISION` and currently equals 5.
 - Counters never wrap; they saturate at `UINT64_MAX`.
 - Global and per-protocol active gauges never underflow.
 - Unknown enum inputs enter bounded `unknown` or `other` buckets.
@@ -231,6 +242,10 @@ field-level semantics and suggested future Prometheus mapping are in
   bucket.
 - Missing, invalid, reversed, or incomplete latency timestamp pairs are
   omitted rather than recorded as zero-duration observations.
+- UDP size bucket arrays are cumulative on the wire, have 14 inclusive finite
+  bounds, and use `count` as the implicit `+Inf` bucket.
+- Session address family means the admitted client peer family, never the UDP
+  target family.
 - Detailed events update their compatible aggregate in the same locked
   mutation; producers must not also emit the old failure/close event.
 - A snapshot is copied while holding the same lock used by writers.
@@ -268,7 +283,7 @@ coverage and live-test procedures are in
   whether another service is actively listening.
 - Socket cleanup checks the path type but does not verify device/inode identity
   against the node originally created.
-- Revision 4 has 297 fixed detailed numeric series. Adding client,
+- Revision 5 has 408 fixed detailed numeric series. Adding client,
   destination, user,
   rule, PID, or free-form error labels in a future exporter would create a
   cardinality or privacy problem.
@@ -276,11 +291,13 @@ coverage and live-test procedures are in
   proof that the target TCP connect completed.
 - Target attempts can temporarily exceed outcomes while nonblocking connects
   are in flight; abnormal worker death can leave that difference.
-- UDP receive errors count failed receive calls. Datagram counters are
-  independent of the aggregate payload-byte counters.
+- UDP receive errors count failed receive calls. Datagram-size observations
+  count successful receives, while UDP directional byte counters count only
+  successfully forwarded datagrams. Never derive datagram counts from bytes.
 - Worker capacity is a `childcheck()` snapshot and can be stale until its next
   cycle; retiring and waiting workers are excluded.
-- Each UDP event currently takes the global statistics lock; benchmark
+- UDP receive count and size share one lock; forwarded count and byte deltas
+  share another. Read/write outcomes can require a separate lock. Benchmark
   packet-heavy workloads.
 - Each recorded latency interval takes the same global lock. Outcome and
   latency updates are individually coherent but are not one atomic combined
@@ -302,7 +319,10 @@ coverage and live-test procedures are in
 - Do NOT add per-client, per-destination, or per-rule labels without a bounded
   cardinality design.
 - Do NOT infer target-connect success from session admission or infer UDP
-  datagram dimensions from aggregate byte counters; use revision 3 directly.
+  datagram dimensions from byte counters; use the revision 3 datagram family
+  and revision 5 size histograms directly.
+- Do NOT re-cumulate either histogram bucket array in an exporter; both are
+  already cumulative JSON values.
 - Do NOT treat a missing latency observation as zero. For Prometheus, divide
   bounds and sums by `1000000`, use the finite buckets as already cumulative,
   and synthesize `le="+Inf"` from `count`.

@@ -876,12 +876,14 @@ sockd_stats_observe_udp_datagram_size(sockd_stats_t *stats,
    add_counter(&histogram->count, 1);
    add_counter(&histogram->sum_bytes, bytes);
 
-   /* count is the implicit +Inf bucket; stored buckets are cumulative. */
+   /* count is the implicit +Inf bucket; finite buckets are stored raw. */
    for (bucket = 0;
         bucket < SOCKD_STATS_DATAGRAM_SIZE_BUCKET_COUNT;
         ++bucket) {
-      if (bytes <= sockd_stats_datagram_size_bucket_upper_bounds[bucket])
-         add_counter(&histogram->cumulative_bucket_counts[bucket], 1);
+      if (bytes <= sockd_stats_datagram_size_bucket_upper_bounds[bucket]) {
+         add_counter(&histogram->bucket_counts[bucket], 1);
+         break;
+      }
    }
 }
 
@@ -1641,6 +1643,7 @@ sockd_stats_json(const sockd_stats_t *stats, const time_t now,
         ++direction) {
       const sockd_stats_size_histogram_t *histogram
       = &stats->udp_datagram_size[direction];
+      uint64_t cumulative = 0;
 
       stats_buffer_append(&output,
                           "%s\"%s\":{"
@@ -1654,10 +1657,11 @@ sockd_stats_json(const sockd_stats_t *stats, const time_t now,
       for (bucket = 0;
            bucket < SOCKD_STATS_DATAGRAM_SIZE_BUCKET_COUNT;
            ++bucket) {
+         add_counter(&cumulative, histogram->bucket_counts[bucket]);
          stats_buffer_append(&output,
                              "%s%"PRIu64,
                              bucket == 0 ? "" : ",",
-                             histogram->cumulative_bucket_counts[bucket]);
+                             cumulative);
       }
       stats_buffer_append(&output, "]}");
    }

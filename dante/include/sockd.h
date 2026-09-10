@@ -2051,7 +2051,7 @@ typedef struct {
 typedef struct {
    uint64_t count;
    uint64_t sum_bytes;
-   uint64_t cumulative_bucket_counts[SOCKD_STATS_DATAGRAM_SIZE_BUCKET_COUNT];
+   uint64_t bucket_counts[SOCKD_STATS_DATAGRAM_SIZE_BUCKET_COUNT];
 } sockd_stats_size_histogram_t;
 
 typedef enum {

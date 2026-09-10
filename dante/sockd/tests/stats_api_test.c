@@ -343,16 +343,16 @@ test_udp_datagram_size_histograms(void)
       SOCKD_STATS_DIRECTION_CLIENT_TO_TARGET];
    TEST_CHECK(histogram->count == 3);
    TEST_CHECK(histogram->sum_bytes == UINT64_C(71565));
-   TEST_CHECK(histogram->cumulative_bucket_counts[0] == 1);
-   TEST_CHECK(histogram->cumulative_bucket_counts[6] == 1);
-   TEST_CHECK(histogram->cumulative_bucket_counts[7] == 2);
-   TEST_CHECK(histogram->cumulative_bucket_counts[
-         SOCKD_STATS_DATAGRAM_SIZE_BUCKET_COUNT - 1] == 2);
+   TEST_CHECK(histogram->bucket_counts[0] == 1);
+   TEST_CHECK(histogram->bucket_counts[6] == 0);
+   TEST_CHECK(histogram->bucket_counts[7] == 1);
+   TEST_CHECK(histogram->bucket_counts[
+         SOCKD_STATS_DATAGRAM_SIZE_BUCKET_COUNT - 1] == 0);
    TEST_CHECK(stats.udp_datagram_size[
          SOCKD_STATS_DIRECTION_TARGET_TO_CLIENT].count == 1);
    TEST_CHECK(stats.udp_datagram_size[
          SOCKD_STATS_DIRECTION_TARGET_TO_CLIENT]
-            .cumulative_bucket_counts[0] == 1);
+            .bucket_counts[0] == 1);
    TEST_CHECK(stats.udp_datagram_size[SOCKD_STATS_DIRECTION_UNKNOWN].count
          == 1);
 
@@ -360,12 +360,12 @@ test_udp_datagram_size_histograms(void)
       SOCKD_STATS_DIRECTION_TARGET_TO_CLIENT];
    histogram->count = UINT64_MAX;
    histogram->sum_bytes = UINT64_MAX - UINT64_C(1);
-   histogram->cumulative_bucket_counts[0] = UINT64_MAX;
+   histogram->bucket_counts[0] = UINT64_MAX;
    sockd_stats_observe_udp_datagram_size(
       &stats, SOCKD_STATS_DIRECTION_TARGET_TO_CLIENT, UINT64_C(2));
    TEST_CHECK(histogram->count == UINT64_MAX);
    TEST_CHECK(histogram->sum_bytes == UINT64_MAX);
-   TEST_CHECK(histogram->cumulative_bucket_counts[0] == UINT64_MAX);
+   TEST_CHECK(histogram->bucket_counts[0] == UINT64_MAX);
 }
 
 static void

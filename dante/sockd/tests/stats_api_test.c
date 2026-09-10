@@ -480,11 +480,126 @@ test_auth_acl_dns_updates(void)
 }
 
 static void
+test_latency_histogram_updates(void)
+{
+   static const uint64_t expected_bounds[] = {
+      UINT64_C(100), UINT64_C(500), UINT64_C(1000), UINT64_C(5000),
+      UINT64_C(10000), UINT64_C(25000), UINT64_C(50000), UINT64_C(100000),
+      UINT64_C(250000), UINT64_C(500000), UINT64_C(1000000),
+      UINT64_C(2500000), UINT64_C(5000000), UINT64_C(10000000),
+      UINT64_C(30000000), UINT64_C(60000000), UINT64_C(300000000),
+      UINT64_C(3600000000)
+   };
+   static const sockd_stats_latency_t latency_types[] = {
+      SOCKD_STATS_LATENCY_NEGOTIATION,
+      SOCKD_STATS_LATENCY_REQUEST,
+      SOCKD_STATS_LATENCY_TARGET_CONNECT,
+      SOCKD_STATS_LATENCY_FIRST_IO,
+      SOCKD_STATS_LATENCY_SESSION,
+      SOCKD_STATS_LATENCY_DNS,
+      SOCKD_STATS_LATENCY_AUTH
+   };
+   const struct timeval start = { 10, 750000 };
+   const struct timeval half_second_later = { 11, 250000 };
+   const struct timeval exact_boundary = { 10, 750100 };
+   const struct timeval same_time = { 10, 750000 };
+   const struct timeval above_largest = { 3610, 750001 };
+   const struct timeval missing = { 0, 0 };
+   const struct timeval backwards = { 10, 749999 };
+   const struct timeval invalid_low = { 10, -1 };
+   const struct timeval invalid_high = { 10, 1000000 };
+   sockd_stats_histogram_t *histogram;
+   sockd_stats_t stats;
+   size_t bucket, latency;
+
+   TEST_CHECK(ELEMENTS(expected_bounds) == SOCKD_STATS_LATENCY_BUCKET_COUNT);
+   TEST_CHECK(ELEMENTS(latency_types) == SOCKD_STATS_LATENCY_COUNT);
+   for (bucket = 0; bucket < ELEMENTS(expected_bounds); ++bucket)
+      TEST_CHECK(sockd_stats_latency_bucket_upper_bounds[bucket]
+            == expected_bounds[bucket]);
+
+   sockd_stats_init(&stats, (time_t)100);
+   for (latency = 0; latency < ELEMENTS(latency_types); ++latency) {
+      TEST_CHECK(sockd_stats_observe_latency(&stats, latency_types[latency],
+                                             &start,
+                                             &half_second_later) == 1);
+      histogram = &stats.latency[latency_types[latency]];
+      TEST_CHECK(histogram->count == 1);
+      TEST_CHECK(histogram->sum_microseconds == UINT64_C(500000));
+      for (bucket = 0; bucket < SOCKD_STATS_LATENCY_BUCKET_COUNT; ++bucket) {
+         TEST_CHECK(histogram->cumulative_bucket_counts[bucket]
+               == (expected_bounds[bucket] >= UINT64_C(500000) ? 1 : 0));
+      }
+   }
+
+   histogram = &stats.latency[SOCKD_STATS_LATENCY_NEGOTIATION];
+   TEST_CHECK(sockd_stats_observe_latency(&stats,
+                                          SOCKD_STATS_LATENCY_NEGOTIATION,
+                                          &start, &exact_boundary) == 1);
+   TEST_CHECK(histogram->count == 2);
+   TEST_CHECK(histogram->sum_microseconds == UINT64_C(500100));
+   TEST_CHECK(histogram->cumulative_bucket_counts[0] == 1);
+   TEST_CHECK(histogram->cumulative_bucket_counts[1] == 1);
+   TEST_CHECK(histogram->cumulative_bucket_counts[
+         SOCKD_STATS_LATENCY_BUCKET_COUNT - 1] == 2);
+
+   TEST_CHECK(sockd_stats_observe_latency(&stats, SOCKD_STATS_LATENCY_REQUEST,
+                                          &start, &same_time) == 1);
+   TEST_CHECK(stats.latency[SOCKD_STATS_LATENCY_REQUEST].count == 2);
+   TEST_CHECK(stats.latency[SOCKD_STATS_LATENCY_REQUEST].sum_microseconds
+         == UINT64_C(500000));
+   TEST_CHECK(stats.latency[SOCKD_STATS_LATENCY_REQUEST]
+                   .cumulative_bucket_counts[0] == 1);
+
+   TEST_CHECK(sockd_stats_observe_latency(&stats,
+                                          SOCKD_STATS_LATENCY_TARGET_CONNECT,
+                                          &start, &above_largest) == 1);
+   histogram = &stats.latency[SOCKD_STATS_LATENCY_TARGET_CONNECT];
+   TEST_CHECK(histogram->count == 2);
+   TEST_CHECK(histogram->sum_microseconds == UINT64_C(3600500001));
+   TEST_CHECK(histogram->cumulative_bucket_counts[
+         SOCKD_STATS_LATENCY_BUCKET_COUNT - 1] == 1);
+
+   histogram = &stats.latency[SOCKD_STATS_LATENCY_AUTH];
+   TEST_CHECK(sockd_stats_observe_latency(&stats, SOCKD_STATS_LATENCY_AUTH,
+                                          &missing,
+                                          &half_second_later) == 0);
+   TEST_CHECK(sockd_stats_observe_latency(&stats, SOCKD_STATS_LATENCY_AUTH,
+                                          &start, &missing) == 0);
+   TEST_CHECK(sockd_stats_observe_latency(&stats, SOCKD_STATS_LATENCY_AUTH,
+                                          &start, &backwards) == 0);
+   TEST_CHECK(sockd_stats_observe_latency(&stats, SOCKD_STATS_LATENCY_AUTH,
+                                          &invalid_low,
+                                          &half_second_later) == 0);
+   TEST_CHECK(sockd_stats_observe_latency(&stats, SOCKD_STATS_LATENCY_AUTH,
+                                          &start, &invalid_high) == 0);
+   TEST_CHECK(sockd_stats_observe_latency(&stats,
+                                          (sockd_stats_latency_t)UINT_MAX,
+                                          &start, &half_second_later) == 0);
+   TEST_CHECK(histogram->count == 1);
+   TEST_CHECK(histogram->sum_microseconds == UINT64_C(500000));
+
+   histogram->count = UINT64_MAX;
+   histogram->sum_microseconds = UINT64_MAX - UINT64_C(10);
+   histogram->cumulative_bucket_counts[
+      SOCKD_STATS_LATENCY_BUCKET_COUNT - 1] = UINT64_MAX;
+   TEST_CHECK(sockd_stats_observe_latency(&stats, SOCKD_STATS_LATENCY_AUTH,
+                                          &start,
+                                          &half_second_later) == 1);
+   TEST_CHECK(histogram->count == UINT64_MAX);
+   TEST_CHECK(histogram->sum_microseconds == UINT64_MAX);
+   TEST_CHECK(histogram->cumulative_bucket_counts[
+         SOCKD_STATS_LATENCY_BUCKET_COUNT - 1] == UINT64_MAX);
+}
+
+static void
 test_json_snapshot(void)
 {
    sockd_stats_t stats;
-   char exact[16384];
-   char json[16384];
+   const struct timeval latency_start = { 10, 0 };
+   const struct timeval latency_end = { 10, 500 };
+   char exact[32768];
+   char json[32768];
    ssize_t length;
 
    sockd_stats_init(&stats, (time_t)100);
@@ -507,12 +622,16 @@ test_json_snapshot(void)
    sockd_stats_add_auth(&stats, AUTHMETHOD_UNAME, 0, 1);
    sockd_stats_add_acl(&stats, SOCKS_CONNECT, 1, 1);
    sockd_stats_add_dns(&stats, SOCKD_STATS_DNS_FORWARD, EAI_AGAIN, 1);
+   TEST_CHECK(sockd_stats_observe_latency(&stats,
+                                          SOCKD_STATS_LATENCY_NEGOTIATION,
+                                          &latency_start,
+                                          &latency_end) == 1);
 
    length = sockd_stats_json(&stats, (time_t)130, json, sizeof(json));
    TEST_CHECK(length > 0);
    TEST_CHECK((size_t)length == strlen(json));
    TEST_CHECK(strstr(json, "\"schema_version\":1") != NULL);
-   TEST_CHECK(strstr(json, "\"schema_revision\":3") != NULL);
+   TEST_CHECK(strstr(json, "\"schema_revision\":4") != NULL);
    TEST_CHECK(strstr(json, "\"server_version\":\"" VERSION "\"") != NULL);
    TEST_CHECK(strstr(json, "\"snapshot_time\":130") != NULL);
    TEST_CHECK(strstr(json, "\"started_at\":100") != NULL);
@@ -555,6 +674,18 @@ test_json_snapshot(void)
                                 "\"block_total\":0}") != NULL);
    TEST_CHECK(strstr(json, "\"dns\":{\"forward\":{") != NULL);
    TEST_CHECK(strstr(json, "\"temporary_total\":1") != NULL);
+   TEST_CHECK(strstr(json, "\"latency\":{\"unit\":\"microseconds\",")
+         != NULL);
+   TEST_CHECK(strstr(json, "\"bucket_upper_bounds\":[100,500,1000,5000,")
+         != NULL);
+   TEST_CHECK(strstr(json, "\"negotiation\":{\"count\":1,"
+                                "\"sum_microseconds\":500,"
+                                "\"cumulative_bucket_counts\":[0,1,1,")
+         != NULL);
+   TEST_CHECK(strstr(json, "\"authentication\":{\"count\":0,"
+                                "\"sum_microseconds\":0,"
+                                "\"cumulative_bucket_counts\":[0,0,0,")
+         != NULL);
 
    TEST_CHECK(sockd_stats_json(&stats, (time_t)130,
                                exact, (size_t)length + 1) == length);
@@ -779,6 +910,7 @@ main(void)
    test_udp_datagram_updates();
    test_worker_capacity_updates();
    test_auth_acl_dns_updates();
+   test_latency_histogram_updates();
    test_json_snapshot();
    test_http_contract();
    test_unix_socket_validation();

@@ -514,6 +514,31 @@ test_udp_datagram_updates(void)
 }
 
 static void
+test_udp_forwarded_io_updates(void)
+{
+   sockd_stats_t stats;
+
+   sockd_stats_init(&stats, (time_t)100);
+   sockd_stats_add_udp_forwarded_io(
+      &stats, SOCKD_STATS_UDP_CLIENT_TO_TARGET, 27, 17);
+   sockd_stats_add_udp_forwarded_io(
+      &stats, SOCKD_STATS_UDP_TARGET_TO_CLIENT, 17, 27);
+
+   TEST_CHECK(stats.udp[SOCKD_STATS_UDP_CLIENT_TO_TARGET].forwarded == 1);
+   TEST_CHECK(stats.udp[SOCKD_STATS_UDP_TARGET_TO_CLIENT].forwarded == 1);
+   TEST_CHECK(stats.client_read_bytes == 27);
+   TEST_CHECK(stats.client_written_bytes == 27);
+   TEST_CHECK(stats.target_read_bytes == 17);
+   TEST_CHECK(stats.target_written_bytes == 17);
+   TEST_CHECK(stats.traffic_bytes[SOCKD_STATS_PROTOCOL_UDP]
+                                 [SOCKD_STATS_DIRECTION_CLIENT_TO_TARGET]
+         == 27);
+   TEST_CHECK(stats.traffic_bytes[SOCKD_STATS_PROTOCOL_UDP]
+                                 [SOCKD_STATS_DIRECTION_TARGET_TO_CLIENT]
+         == 17);
+}
+
+static void
 test_worker_capacity_updates(void)
 {
    sockd_stats_t stats;
@@ -1118,6 +1143,7 @@ main(void)
    test_io_outcome_updates();
    test_target_connect_updates();
    test_udp_datagram_updates();
+   test_udp_forwarded_io_updates();
    test_worker_capacity_updates();
    test_auth_acl_dns_updates();
    test_latency_histogram_updates();

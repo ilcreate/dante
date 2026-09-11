@@ -1,0 +1,21 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, master, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  packages:
+    uses: ./.github/workflows/packages.yml
+    with:
+      # Fast Debian amd64 check for PRs; all six targets on branch push/manual run.
+      full_matrix: ${{ github.event_name != 'pull_request' }}

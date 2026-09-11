@@ -404,8 +404,11 @@ void
 run_monitor(void)
 {
    const char *function = "run_monitor()";
+   const char *statspath = pidismainmother(getppid()) ?
+                             sockscf.option.stats_socket : NULL;
    struct sigaction sigact;
    fd_set *rset;
+   int statsfd = -1;
 
    bzero(&sigact, sizeof(sigact));
    sigact.sa_flags     = SA_RESTART | SA_SIGINFO;
@@ -421,6 +424,16 @@ run_monitor(void)
       serr("%s: sigaction(SIGINFO)", function);
 
    rset = allocate_maxsize_fdset();
+
+   if (statspath != NULL) {
+      statsfd = sockd_stats_api_open(statspath);
+      if (statsfd == -1)
+         serr("%s: could not open statistics API socket %s",
+              function, statspath);
+
+      slog(LOG_INFO, "statistics API listening on Unix socket %s",
+           statspath);
+   }
 
    sockd_print_child_ready_message((size_t)freedescriptors(NULL, NULL));
 
@@ -439,6 +452,11 @@ run_monitor(void)
       SASSERTX(sockscf.state.mother.ack != -1);
       FD_SET(sockscf.state.mother.ack, rset);
       fdbits = MAX(fdbits, sockscf.state.mother.ack);
+
+      if (statsfd != -1) {
+         FD_SET(statsfd, rset);
+         fdbits = MAX(fdbits, statsfd);
+      }
 
       ++fdbits;
       switch (selectn(fdbits,
@@ -469,7 +487,17 @@ run_monitor(void)
                 * understand it is wrong.
                 */
                free(rset);
+               sockd_stats_api_close(statsfd, statspath);
                sockdexit(EXIT_FAILURE);
+            }
+
+            if (statsfd != -1 && FD_ISSET(statsfd, rset)) {
+               sockd_stats_t stats;
+
+               sockd_stats_snapshot(&stats);
+               if (sockd_stats_api_serve(statsfd, &stats, time(NULL)) == -1)
+                  swarn("%s: failed to serve statistics API request",
+                        function);
             }
       }
 

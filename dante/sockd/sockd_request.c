@@ -34,7 +34,7 @@
  *  Software Distribution Coordinator  or  sdc@inet.no
  *  Inferno Nettverk A/S
  *  Oslo Research Park
- *  Gaustadalléen 21
+ *  GaustadallÃ©en 21
  *  NO-0349 Oslo
  *  Norway
  *
@@ -278,8 +278,9 @@ run_request()
 #endif /* DIAGNOSTIC */
       iostatus_t iostatus;
       struct sockaddr_storage clientudpaddr;
+      struct timeval requestend;
       char command, emsg[2048];
-      int fdbits, weclosedfirst;
+      int fdbits, request_errno, weclosedfirst;
 
       errno = 0; /* reset for each iteration. */
 
@@ -332,6 +333,14 @@ run_request()
                            &weclosedfirst,
                            emsg,
                            sizeof(emsg));
+
+      request_errno = errno;
+      gettimeofday_monotonic(&requestend);
+      sockd_stats_update_latency(SOCKD_STATS_LATENCY_REQUEST,
+                                 &req.state.time.negotiateend,
+                                 &requestend);
+      sockd_stats_update_request(req.state.command, iostatus, 1);
+      errno = request_errno;
 
       if (iostatus != IO_NOERROR) {
          /*
@@ -865,7 +874,8 @@ dorequest(mother, request, clientudpaddr, weclosedfirst, emsg, emsglen)
    clientinfo_t cinfo;
    size_t msglen;
    char strhost[MAXSOCKSHOSTSTRING], buf[(MAXHOSTNAMELEN * 4) + 256];
-   int rc;
+   int rc, serverchain_errno, serverchain_rc;
+   struct timeval targetconnectend;
 #if SOCKS_SERVER
    sockshost_t expectedbindreply, bindreplydst;
 #endif /* SOCKS_SERVER */
@@ -1753,15 +1763,34 @@ dorequest(mother, request, clientudpaddr, weclosedfirst, emsg, emsglen)
                          SOCKETOPT_PRE | SOCKETOPT_ANYTIME);
    }
 
+   gettimeofday_monotonic(&io.state.time.targetconnectstart);
    errno = 0;
-   if (serverchain(io.dst.s,
-                   CONTROLIO(&io)->s,
-                   &io.src.raddr,
-                   &request->req,
-                   &io.state.proxychain,
-                   io.state.protocol == SOCKS_TCP ? &io.dst.auth : NULL,
-                   buf,
-                   sizeof(buf)) == 0) {
+   serverchain_rc = serverchain(io.dst.s,
+                                CONTROLIO(&io)->s,
+                                &io.src.raddr,
+                                &request->req,
+                                &io.state.proxychain,
+                                io.state.protocol == SOCKS_TCP ?
+                                   &io.dst.auth : NULL,
+                                buf,
+                                sizeof(buf));
+   serverchain_errno = errno;
+   gettimeofday_monotonic(&targetconnectend);
+   if (serverchain_rc != 0 && serverchain_errno == 0)
+      serverchain_errno = EIO;
+   if (request->req.command == SOCKS_CONNECT
+   &&  io.state.proxychain.proxyprotocol != PROXY_DIRECT) {
+      sockd_stats_update_target_connect_attempt(1);
+      sockd_stats_update_target_connect_result(serverchain_rc == 0 ?
+                                                0 : serverchain_errno,
+                                                1);
+      sockd_stats_update_latency(SOCKD_STATS_LATENCY_TARGET_CONNECT,
+                                 &io.state.time.targetconnectstart,
+                                 &targetconnectend);
+   }
+   errno = serverchain_errno;
+
+   if (serverchain_rc == 0) {
       if (io.state.proxychain.proxyprotocol != PROXY_DIRECT) {
          socklen_t sinlen;
 
@@ -2759,6 +2788,10 @@ dorequest(mother, request, clientudpaddr, weclosedfirst, emsg, emsglen)
 #endif /* SOCKS_SERVER */
 
       case SOCKS_CONNECT: {
+         int connect_errno;
+
+         gettimeofday_monotonic(&io.state.time.targetconnectstart);
+         sockd_stats_update_target_connect_attempt(1);
          rc = socks_connecthost(io.dst.s,
                                 EXTERNALIF,
                                 &io.dst.host,
@@ -2767,8 +2800,15 @@ dorequest(mother, request, clientudpaddr, weclosedfirst, emsg, emsglen)
                                 (long)0, /* wait for completion in i/o child. */
                                 emsg,
                                 emsglen);
+         connect_errno = errno;
 
          if (rc == 0) {
+            gettimeofday_monotonic(&targetconnectend);
+            io.state.time.established = targetconnectend;
+            sockd_stats_update_target_connect_result(0, 1);
+            sockd_stats_update_latency(SOCKD_STATS_LATENCY_TARGET_CONNECT,
+                                       &io.state.time.targetconnectstart,
+                                       &targetconnectend);
             io.dst.state.isconnected = 1;
 
 #if HAVE_NEGOTIATE_PHASE
@@ -2797,6 +2837,11 @@ dorequest(mother, request, clientudpaddr, weclosedfirst, emsg, emsglen)
                 */
                rc = 0;
             else {
+               gettimeofday_monotonic(&targetconnectend);
+               sockd_stats_update_target_connect_result(connect_errno, 1);
+               sockd_stats_update_latency(SOCKD_STATS_LATENCY_TARGET_CONNECT,
+                                          &io.state.time.targetconnectstart,
+                                          &targetconnectend);
                rc       = -1;
                iostatus = IO_IOERROR;
 
@@ -2816,6 +2861,7 @@ dorequest(mother, request, clientudpaddr, weclosedfirst, emsg, emsglen)
 #endif /* !HAVE_NEGOTIATE_PHASE */
             }
          }
+         errno = connect_errno;
 
          if (rc != 0) {
             iolog(&io.srule,

@@ -32,7 +32,7 @@
  *  Software Distribution Coordinator  or  sdc@inet.no
  *  Inferno Nettverk A/S
  *  Oslo Research Park
- *  Gaustadalléen 21
+ *  GaustadallÃ©en 21
  *  NO-0349 Oslo
  *  Norway
  *
@@ -845,6 +845,7 @@ rulespermit(s, peer, local, clientauth, srcauth, match, state,
          *match      = defrule;
          match->type = ruletype;
 
+         sockd_stats_update_acl(state->command, 0, 1);
          return 0;
       }
    }
@@ -857,6 +858,7 @@ rulespermit(s, peer, local, clientauth, srcauth, match, state,
       *match      = defrule;
       match->type = ruletype;
 
+      sockd_stats_update_acl(state->command, 0, 1);
       return 0; /* will never succeed. */
    }
 
@@ -895,6 +897,7 @@ rulespermit(s, peer, local, clientauth, srcauth, match, state,
       match->type    = ruletype;
       match->verdict = VERDICT_PASS;
 
+      sockd_stats_update_acl(state->command, 1, 1);
       return 1;
    }
 
@@ -1496,6 +1499,7 @@ rulespermit(s, peer, local, clientauth, srcauth, match, state,
 
                SASSERTX(!SHMID_ISATTACHED(match));
 
+               sockd_stats_update_acl(state->command, 0, 1);
                return 0;
             }
 #else /* !COVENANT */
@@ -1596,6 +1600,7 @@ rulespermit(s, peer, local, clientauth, srcauth, match, state,
          match->verdict = VERDICT_BLOCK;
          SHMEM_CLEAR(match, SHMEM_ALL, 1);
 
+         sockd_stats_update_acl(state->command, 0, 1);
          return 0;
       }
 
@@ -1633,6 +1638,7 @@ rulespermit(s, peer, local, clientauth, srcauth, match, state,
          match->verdict = VERDICT_BLOCK;
          SHMEM_CLEAR(match, SHMEM_ALL, 1);
 
+         sockd_stats_update_acl(state->command, 0, 1);
          return 0;
       }
 
@@ -1656,6 +1662,7 @@ rulespermit(s, peer, local, clientauth, srcauth, match, state,
          match->verdict = VERDICT_BLOCK;
          SHMEM_CLEAR(match, SHMEM_ALL, 1);
 
+         sockd_stats_update_acl(state->command, 0, 1);
          return 0;   /* something got screwed up. */
       }
 
@@ -1732,6 +1739,9 @@ rulespermit(s, peer, local, clientauth, srcauth, match, state,
 
    SASSERTX(!SHMID_ISATTACHED(match));
 
+   sockd_stats_update_acl(state->command,
+                          match->verdict == VERDICT_PASS,
+                          1);
    return match->verdict == VERDICT_PASS;
 }
 

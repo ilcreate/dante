@@ -34,7 +34,7 @@
  *  Software Distribution Coordinator  or  sdc@inet.no
  *  Inferno Nettverk A/S
  *  Oslo Research Park
- *  Gaustadalléen 21
+ *  GaustadallÃ©en 21
  *  NO-0349 Oslo
  *  Norway
  *
@@ -135,6 +135,8 @@ io_udp_client2target(control, client, twotargets, cauth, state,
                            &len,
                            &recvflags,
                            &client->auth)) == -1) {
+      sockd_stats_update_udp_receive_error(
+         SOCKD_STATS_UDP_CLIENT_TO_TARGET, 1);
       if (ERRNOISPREVIOUSPACKET(errno)) {
          /*
           * error is from a previous packet sent by us out on this socket,
@@ -207,9 +209,13 @@ io_udp_client2target(control, client, twotargets, cauth, state,
       }
    }
 
+   sockd_stats_update_udp_received(SOCKD_STATS_UDP_CLIENT_TO_TARGET,
+                                   (uint64_t)r);
    iostatus = io_packet_received(&recvflags, r, &from, &client->laddr);
 
    if (iostatus != IO_NOERROR) {
+      sockd_stats_update_udp_drop(SOCKD_STATS_UDP_CLIENT_TO_TARGET,
+                                  SOCKD_STATS_UDP_DROP_INTERNAL_ERROR, 1);
       *badfd = client->s;
       return iostatus;
    }
@@ -267,6 +273,10 @@ io_udp_client2target(control, client, twotargets, cauth, state,
       SASSERTX(!((iostatus != IO_NOERROR) && blocked));
 
       if (iostatus != IO_NOERROR || blocked) {
+         sockd_stats_update_udp_drop(SOCKD_STATS_UDP_CLIENT_TO_TARGET,
+            blocked ? SOCKD_STATS_UDP_DROP_UNEXPECTED_SOURCE :
+                      SOCKD_STATS_UDP_DROP_INTERNAL_ERROR,
+            1);
          iolog(packetrule,
                state,
                IOOP(blocked, iostatus),
@@ -292,6 +302,8 @@ io_udp_client2target(control, client, twotargets, cauth, state,
 
    if (getudptarget(buf, (size_t)r, &header, &headerlen, emsg, sizeof(emsg))
    == NULL) {
+      sockd_stats_update_udp_drop(SOCKD_STATS_UDP_CLIENT_TO_TARGET,
+                                  SOCKD_STATS_UDP_DROP_MALFORMED, 1);
       slog(LOG_DEBUG,
            "%s: getudptarget() failed for packet of length %lu from client %s, "
            "received on local address %s for target %s: %s",
@@ -341,6 +353,8 @@ io_udp_client2target(control, client, twotargets, cauth, state,
       }
       else {
          if (gaierr != 0) {  /* dns-error. */
+            sockd_stats_update_udp_drop(SOCKD_STATS_UDP_CLIENT_TO_TARGET,
+                                        SOCKD_STATS_UDP_DROP_DNS_ERROR, 1);
             SASSERTX(header.host.atype == SOCKS_ADDR_DOMAIN);
             log_resolvefailed(header.host.addr.domain, EXTERNALIF, gaierr);
 
@@ -350,6 +364,8 @@ io_udp_client2target(control, client, twotargets, cauth, state,
                      gai_strerror(gaierr));
          }
          else { /* some other, non-dns error. */
+            sockd_stats_update_udp_drop(SOCKD_STATS_UDP_CLIENT_TO_TARGET,
+                                        SOCKD_STATS_UDP_DROP_INTERNAL_ERROR, 1);
             snprintf(emsg, sizeof(emsg),
                      "could not resolve target address %s.  Non-DNS error: %s ",
                      sockshost2string(&header.host, NULL, 0),
@@ -504,6 +520,8 @@ io_udp_client2target(control, client, twotargets, cauth, state,
              * this a fatal error.
              */
             iostatus = IO_TMPERROR;
+            sockd_stats_update_udp_drop(SOCKD_STATS_UDP_CLIENT_TO_TARGET,
+                                        SOCKD_STATS_UDP_DROP_INTERNAL_ERROR, 1);
 
             iolog(packetrule,
                   state,
@@ -643,6 +661,8 @@ io_udp_client2target(control, client, twotargets, cauth, state,
                swarnx("%s: %s", function, emsg);
 
             iostatus = IO_TMPERROR;
+            sockd_stats_update_udp_drop(SOCKD_STATS_UDP_CLIENT_TO_TARGET,
+                                        SOCKD_STATS_UDP_DROP_INTERNAL_ERROR, 1);
          }
       }
    }
@@ -743,8 +763,12 @@ io_udp_client2target(control, client, twotargets, cauth, state,
 
                doconnect = sockscf.udpconnectdst;
             }
-            else
+            else {
                iostatus = IO_TMPERROR;
+               sockd_stats_update_udp_drop(SOCKD_STATS_UDP_CLIENT_TO_TARGET,
+                                           SOCKD_STATS_UDP_DROP_INTERNAL_ERROR,
+                                           1);
+            }
          }
 
          if (target != NULL) {
@@ -801,6 +825,9 @@ io_udp_client2target(control, client, twotargets, cauth, state,
       }
 
       if (iostatus != IO_NOERROR || !permit) {
+         if (!permit)
+            sockd_stats_update_udp_drop(SOCKD_STATS_UDP_CLIENT_TO_TARGET,
+                                        SOCKD_STATS_UDP_DROP_BLOCKED, 1);
          iolog(packetrule,
                state,
                IOOP(!permit, iostatus),
@@ -894,6 +921,8 @@ io_udp_client2target(control, client, twotargets, cauth, state,
                                (long)-1,
                                emsg,
                                sizeof(emsg)) == -1) {
+            sockd_stats_update_udp_drop(SOCKD_STATS_UDP_CLIENT_TO_TARGET,
+                                        SOCKD_STATS_UDP_DROP_INTERNAL_ERROR, 1);
             iolog(packetrule,
                   state,
                   OPERATION_TMPERROR,
@@ -931,6 +960,15 @@ io_udp_client2target(control, client, twotargets, cauth, state,
                                    emsg,
                                    sizeof(emsg));
 
+         if (w == 0 && payloadlen != 0)
+            sockd_stats_update_io_outcome(SOCKS_UDP,
+                                          SOCKD_STATS_IO_SIDE_TARGET,
+                                          SOCKD_STATS_IO_ZERO_WRITE, 1);
+         else if (w > 0 && (size_t)w < payloadlen)
+            sockd_stats_update_io_outcome(SOCKS_UDP,
+                                          SOCKD_STATS_IO_SIDE_TARGET,
+                                          SOCKD_STATS_IO_PARTIAL_WRITE, 1);
+
          *bwused = w;
 
          target->target_written.bytes   += sendtoflags.tosocket;
@@ -952,6 +990,8 @@ io_udp_client2target(control, client, twotargets, cauth, state,
                   (unsigned long)payloadlen, strerror(errno));
 
          iostatus = IOSTATUS_UDP_SEND_FAILED(errno);
+         sockd_stats_update_udp_drop(SOCKD_STATS_UDP_CLIENT_TO_TARGET,
+                                     SOCKD_STATS_UDP_DROP_SEND_ERROR, 1);
          *badfd   = target->s;
       }
    }
@@ -959,6 +999,10 @@ io_udp_client2target(control, client, twotargets, cauth, state,
       w = -1;
 
    if (iostatus != IO_NOERROR || !permit) {
+      if (iostatus != IO_NOERROR && w >= 0)
+         sockd_stats_update_udp_drop(SOCKD_STATS_UDP_CLIENT_TO_TARGET,
+                                     SOCKD_STATS_UDP_DROP_SEND_ERROR, 1);
+
       iolog(packetrule,
             state,
             IOOP(!permit, iostatus),
@@ -986,6 +1030,9 @@ io_udp_client2target(control, client, twotargets, cauth, state,
    }
 
    SASSERTX(w == (ssize_t)payloadlen);
+   sockd_stats_update_udp_forwarded(SOCKD_STATS_UDP_CLIENT_TO_TARGET,
+                                    recvflags.fromsocket,
+                                    sendtoflags.tosocket);
 
    iolog(packetrule,
          state,
@@ -1052,6 +1099,8 @@ io_udp_target2client(control, client, twotargets, state,
                            &len,
                            &recvflags,
                            &twotargets->auth)) == -1) {
+      sockd_stats_update_udp_receive_error(
+         SOCKD_STATS_UDP_TARGET_TO_CLIENT, 1);
       if (ERRNOISPREVIOUSPACKET(errno)) {
          /*
           * error is from the target of an earlier packet from client,
@@ -1108,11 +1157,15 @@ io_udp_target2client(control, client, twotargets, state,
       }
    }
 
+   sockd_stats_update_udp_received(SOCKD_STATS_UDP_TARGET_TO_CLIENT,
+                                   (uint64_t)r);
    iostatus = io_packet_received(&recvflags, r, &from, &twotargets->laddr);
 
    gettimeofday_monotonic(&target->lastio);
 
    if (iostatus != IO_NOERROR) {
+      sockd_stats_update_udp_drop(SOCKD_STATS_UDP_TARGET_TO_CLIENT,
+                                  SOCKD_STATS_UDP_DROP_INTERNAL_ERROR, 1);
       *badfd = twotargets->s;
       return iostatus;
    }
@@ -1273,6 +1326,10 @@ io_udp_target2client(control, client, twotargets, state,
    }
 
    if (iostatus != IO_NOERROR || !permit) {
+      sockd_stats_update_udp_drop(SOCKD_STATS_UDP_TARGET_TO_CLIENT,
+         !permit ? SOCKD_STATS_UDP_DROP_BLOCKED :
+                   SOCKD_STATS_UDP_DROP_INTERNAL_ERROR,
+         1);
       iolog(packetrule,
             state,
             IOOP(!permit, iostatus),
@@ -1334,6 +1391,15 @@ io_udp_target2client(control, client, twotargets, state,
                                 emsg,
                                 sizeof(emsg));
 
+      if (w == 0 && payloadlen != 0)
+         sockd_stats_update_io_outcome(SOCKS_UDP,
+                                       SOCKD_STATS_IO_SIDE_CLIENT,
+                                       SOCKD_STATS_IO_ZERO_WRITE, 1);
+      else if (w > 0 && (size_t)w < payloadlen)
+         sockd_stats_update_io_outcome(SOCKS_UDP,
+                                       SOCKD_STATS_IO_SIDE_CLIENT,
+                                       SOCKD_STATS_IO_PARTIAL_WRITE, 1);
+
       *bwused = w;
 
       target->client_written.bytes   += sendtoflags.tosocket;
@@ -1344,10 +1410,16 @@ io_udp_target2client(control, client, twotargets, state,
                (unsigned long)payloadlen, strerror(errno));
 
       iostatus = IOSTATUS_UDP_SEND_FAILED(errno);
+      sockd_stats_update_udp_drop(SOCKD_STATS_UDP_TARGET_TO_CLIENT,
+                                  SOCKD_STATS_UDP_DROP_SEND_ERROR, 1);
       *badfd   = client->s;
    }
 
    if (iostatus != IO_NOERROR) {
+      if (w >= 0)
+         sockd_stats_update_udp_drop(SOCKD_STATS_UDP_TARGET_TO_CLIENT,
+                                     SOCKD_STATS_UDP_DROP_SEND_ERROR, 1);
+
       iolog(packetrule,
             state,
             IOOP(!permit, iostatus),
@@ -1371,6 +1443,9 @@ io_udp_target2client(control, client, twotargets, state,
    }
 
    SASSERTX(w == (ssize_t)payloadlen);
+   sockd_stats_update_udp_forwarded(SOCKD_STATS_UDP_TARGET_TO_CLIENT,
+                                    recvflags.fromsocket,
+                                    sendtoflags.tosocket);
 
    iolog(packetrule,
          state,

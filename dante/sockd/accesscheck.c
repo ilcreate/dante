@@ -33,7 +33,7 @@
  *  Software Distribution Coordinator  or  sdc@inet.no
  *  Inferno Nettverk A/S
  *  Oslo Research Park
- *  Gaustadalléen 21
+ *  GaustadallÃ©en 21
  *  NO-0349 Oslo
  *  Norway
  *
@@ -297,7 +297,8 @@ accesscheck(s, auth, src, dst, emsg, emsgsize)
 {
    const char *function = "accesscheck()";
    char srcstr[MAXSOCKADDRSTRING], dststr[sizeof(srcstr)];
-   int match, authresultisfixed;
+   struct timeval authstart, authend;
+   int auth_errno, match, authresultisfixed;
 
    if (sockscf.option.debug)
       slog(LOG_DEBUG, "%s: method: %s, %s -> %s ",
@@ -337,6 +338,7 @@ accesscheck(s, auth, src, dst, emsg, emsgsize)
    }
 
    match = 0;
+   gettimeofday_monotonic(&authstart);
 
    switch (auth->method) {
       /*
@@ -496,6 +498,13 @@ accesscheck(s, auth, src, dst, emsg, emsgsize)
       default:
          SERRX(auth->method);
    }
+
+   auth_errno = errno;
+   gettimeofday_monotonic(&authend);
+   sockd_stats_update_latency(SOCKD_STATS_LATENCY_AUTH,
+                              &authstart, &authend);
+   sockd_stats_update_auth(auth->method, match, 1);
+   errno = auth_errno;
 
    /*
     * Some methods can be called with different values for the

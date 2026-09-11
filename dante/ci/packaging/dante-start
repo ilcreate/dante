@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+# launchd runs this as root. The monitor binds its socket as nobody.
+/usr/bin/install -d -m 0750 -o nobody /var/run/sockd
+exec /usr/local/sbin/sockd -f /usr/local/etc/sockd.conf \
+    -p /var/run/sockd/sockd.pid -S /var/run/sockd/stats.sock

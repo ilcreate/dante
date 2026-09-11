@@ -53,6 +53,8 @@ sockd \- network proxyserver
 .IR file ]
 .RB [ \-p
 .IR file ]
+.RB [ \-S
+.IR unix-socket ]
 .SH DESCRIPTION
 .B Dante
 implements the socks standard and can function as a firewall between networks.
@@ -110,10 +112,56 @@ option in sockd.conf(5).
 will write the pid of the main process to this file.
 .IR file .
 .TP
+.BI \-S unix-socket
+Enables the read-only statistics API on the given Unix domain socket.
+The socket is created with mode 0600 and is owned by the user running
+.BR sockd .
+The API is disabled when this option is not specified.
+.TP
 .B \-v
 Displays
 .B Dante
 version.
+.SH STATISTICS API
+When enabled with
+.BR \-S ,
+the monitor process serves HTTP/1.0 and HTTP/1.1 requests over a Unix
+domain stream socket.  The versioned endpoint
+.B GET /v1/stats
+returns a JSON snapshot containing server and schema versions, timestamps,
+uptime, process-shared counters, and gauges.  The current response uses schema
+version 1, revision 5.  The connection is closed after each response.  Other
+paths return 404 and methods other than GET return 405.
+.PP
+The counters cover accepted and pre-negotiation dropped clients, negotiation
+and request failures, admitted and closed sessions, session errors, and bytes
+read and written on the client and target sides.  Revision 2 also reports
+negotiation outcomes, request outcomes by SOCKS command, session lifecycle by
+protocol, and normalized session close reasons.  Revision 3 adds target
+connection outcomes, UDP datagrams/errors/drops, worker capacity, executed
+authentication results, ACL decisions, and DNS backend-query results.  These
+dimensions are fixed and include unknown/other buckets.  Active sessions and
+worker capacity are gauges.  Counters remain available across worker rotation
+and configuration reload, but reset when the server is restarted.
+.PP
+Revision 4 adds fixed cumulative latency histograms for negotiation, request
+processing, target connection, first I/O, full accepted-to-close session,
+resolver backend, and executed authentication intervals.  Bounds and sums are
+reported in integer microseconds; each histogram count is its implicit
+infinite bucket.  Incomplete or invalid intervals are omitted.
+.PP
+Revision 5 adds byte counters by TCP/UDP and traffic direction, session
+lifecycle by client IPv4/IPv6 family, UDP datagram-size histograms, and
+read/write/zero-write/partial-write outcomes by protocol and socket side.
+All dimensions and histogram bounds are fixed.  UDP size observations count
+successful socket receives, while UDP directional bytes count successfully
+forwarded datagrams.
+.PP
+The compatibility field
+.B sessions_established_total
+is incremented when an I/O worker admits a session; it does not guarantee that
+a remote TCP connection has completed.  The API reports socket payload bytes,
+not link-layer or IP wire bytes.
 .SH SIGNALS
 .TP
 .B SIGHUP

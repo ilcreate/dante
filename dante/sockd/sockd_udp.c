@@ -275,6 +275,7 @@ doio_udp(io, rset, badfd)
 
          io_update(&io->lastio,
                    bwused,
+                   io->state.protocol,
                    &src_read,
                    NULL,
                    NULL,
@@ -379,6 +380,7 @@ doio_udp(io, rset, badfd)
 
          io_update(&io->lastio,
                    bwused,
+                   io->state.protocol,
                    NULL,
                    &src_written,
                    &dst_read,

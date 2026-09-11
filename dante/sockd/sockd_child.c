@@ -33,7 +33,7 @@
  *  Software Distribution Coordinator  or  sdc@inet.no
  *  Inferno Nettverk A/S
  *  Oslo Research Park
- *  Gaustadalléen 21
+ *  GaustadallÃ©en 21
  *  NO-0349 Oslo
  *  Norway
  *
@@ -142,6 +142,7 @@ childcheck(type)
    sockd_child_t **childv, *idlechild;
    size_t child, *childc, minfreeslots, maxslotsperproc, proxyc,
           minclientshandled;
+   uint64_t processc, slots_free, slots_total;
    time_t  minlifetime;
 #if BAREFOOTD
    pid_t hasfreeudpslot = (pid_t)-1;
@@ -371,6 +372,7 @@ childcheck(type)
                ++freec;
 
          if (freec < ELEMENTS(reservedv)) {
+            sockd_stats_update_worker_spawn_failure(type, 1);
             swarn("%s: not enough free sockets/file descriptors to add any "
                   "new child.  Need at least %lu, but have only %lu",
                   function,
@@ -420,6 +422,7 @@ childcheck(type)
 
             }
             else {
+               sockd_stats_update_worker_spawn_failure(type, 1);
                log_addchild_failed();
 
                disable_childcreate(errno, NULL);
@@ -431,6 +434,41 @@ childcheck(type)
 
          closev(ELEMENTS(reservedv), reservedv);
       }
+   }
+
+   processc = slots_free = slots_total = 0;
+   if ((type < 0 ? -type : type) != PROC_MONITOR) {
+      for (child = 0; child < *childc; ++child) {
+         uint64_t child_free;
+
+         if ((*childv)[child].waitingforexit
+         ||  child_should_retire(&(*childv)[child]))
+            continue;
+
+         if (processc != UINT64_MAX)
+            ++processc;
+
+         if (UINT64_MAX - slots_total < (uint64_t)maxslotsperproc)
+            slots_total = UINT64_MAX;
+         else
+            slots_total += (uint64_t)maxslotsperproc;
+
+         child_free = (uint64_t)(*childv)[child].freec;
+#if BAREFOOTD
+         if ((type < 0 ? -type : type) == PROC_IO
+         &&  (*childv)[child].hasudpsession)
+            child_free = 0;
+#endif /* BAREFOOTD */
+         if (UINT64_MAX - slots_free < child_free)
+            slots_free = UINT64_MAX;
+         else
+            slots_free += child_free;
+      }
+
+      sockd_stats_update_worker_capacity(type,
+                                         processc,
+                                         slots_total,
+                                         slots_free);
    }
 
    /* if errno was set, it was also logged.  Don't drag it with us. */

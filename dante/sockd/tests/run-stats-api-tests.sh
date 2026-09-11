@@ -2,7 +2,7 @@
 
 set -eu
 
-project_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+project_root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)
 test_binary=$(mktemp "${TMPDIR:-/tmp}/dante-stats-api-test.XXXXXX")
 trap 'rm -f "$test_binary"' EXIT HUP INT TERM
 

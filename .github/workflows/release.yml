@@ -1,0 +1,41 @@
+name: Release packages
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/packages.yml
+    with:
+      full_matrix: true
+      release_tag: ${{ github.ref_name }}
+
+  draft:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: dist
+      - name: Verify complete artifact set, checksums and create draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 dante/ci/release.py dist

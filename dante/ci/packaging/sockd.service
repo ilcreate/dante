@@ -1,0 +1,19 @@
+[Unit]
+Description=Dante SOCKS server with statistics API
+After=network.target
+Documentation=man:sockd(8) man:sockd.conf(5)
+
+[Service]
+Type=simple
+RuntimeDirectory=sockd
+RuntimeDirectoryMode=0750
+# The monitor creates the API socket after dropping to user.unprivileged.
+ExecStartPre=/usr/bin/chown nobody /run/sockd
+ExecStart=/usr/sbin/sockd -f /etc/sockd.conf -p /run/sockd/sockd.pid -S /run/sockd/stats.sock
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=control-group
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

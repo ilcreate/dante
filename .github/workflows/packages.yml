@@ -1,0 +1,113 @@
+name: Build packages
+
+on:
+  workflow_call:
+    inputs:
+      full_matrix:
+        type: boolean
+        default: true
+      release_tag:
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Validate workflows, scripts and release version rules
+        run: |
+          go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          shellcheck dante/ci/*.sh dante/ci/packaging/dante-start dante/sockd/tests/run-stats-api-tests.sh
+          python3 -m unittest discover -s dante/ci/tests -v
+
+  source:
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.matrix.outputs.value }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Export committed sources and validate tag
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: python3 dante/ci/metadata.py --output dist --tag "$RELEASE_TAG" --run-number "$GITHUB_RUN_NUMBER"
+      - name: Select native runners
+        id: matrix
+        env:
+          FULL_MATRIX: ${{ inputs.full_matrix }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          targets = json.loads(Path('dante/ci/targets.json').read_text())
+          if os.environ['FULL_MATRIX'] != 'true':
+              targets = targets[:1]
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              out.write('value=' + json.dumps({'include': targets}) + '\n')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-source
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  package:
+    needs: source
+    name: ${{ matrix.format }}-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.source.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-source
+          path: input
+      - name: Build and install Linux package; test installed daemon
+        if: matrix.format != 'macos'
+        env:
+          PACKAGE_FORMAT: ${{ matrix.format }}
+          BUILD_IMAGE: ${{ matrix.image }}
+        run: |
+          mkdir -p dist
+          docker run --rm \
+            --mount "type=bind,source=$GITHUB_WORKSPACE,target=/repo,readonly" \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/dist,target=/out" \
+            "$BUILD_IMAGE" bash -c \
+            'bash /repo/dante/ci/install-build-deps.sh "$1" && bash /repo/dante/ci/build-package.sh "$1" /repo/input /out' \
+            bash "$PACKAGE_FORMAT"
+      - name: Build macOS installer; test extracted daemon
+        if: matrix.format == 'macos'
+        run: bash dante/ci/build-package.sh macos input dist
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-${{ matrix.format }}-${{ matrix.arch }}
+          path: |
+            dist/*.deb
+            dist/*.rpm
+            dist/*.pkg
+            dist/*.build-info.json
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: logs-${{ matrix.format }}-${{ matrix.arch }}
+          path: dist/*.log
+          retention-days: 7

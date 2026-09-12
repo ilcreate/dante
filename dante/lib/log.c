@@ -318,6 +318,159 @@ init_iologaddr(addr, local_type, local, peer_type, peer, auth, hostid)
    return addr;
 }
 
+/* Storage belongs to one iolog call; no native credential object reaches
+ * the serializer.  Numeric addresses are formatted without DNS lookups.
+ */
+typedef struct {
+   socklog_address_t address;
+   socklog_endpoint_t local, peer;
+   char localtext[INET6_ADDRSTRLEN], peertext[INET6_ADDRSTRLEN];
+#if HAVE_SOCKS_HOSTID
+   const char *hostids[HAVE_MAX_HOSTIDS];
+   char hostidtext[HAVE_MAX_HOSTIDS][INET_ADDRSTRLEN];
+#endif
+} iologjsonaddr_t;
+
+static const socklog_endpoint_t *
+iologendpoint(const sockshost_t *host, socklog_endpoint_t *endpoint,
+              char *text, const size_t textsize)
+{
+   memset(endpoint, 0, sizeof(*endpoint));
+   endpoint->port = ntohs(host->port);
+   switch (host->atype) {
+      case SOCKS_ADDR_IPV4:
+         endpoint->type = "ipv4";
+         if (inet_ntop(AF_INET, &host->addr.ipv4, text, textsize) == NULL)
+            return NULL;
+         endpoint->address = text;
+         break;
+      case SOCKS_ADDR_IPV6:
+         endpoint->type = "ipv6";
+         if (inet_ntop(AF_INET6, &host->addr.ipv6.ip, text, textsize) == NULL)
+            return NULL;
+         endpoint->address = text;
+         endpoint->scope_id_isset = 1;
+         endpoint->scope_id = host->addr.ipv6.scopeid;
+         break;
+      case SOCKS_ADDR_DOMAIN:
+         endpoint->type = "domain";
+         endpoint->address = host->addr.domain;
+         break;
+      default:
+         return NULL;
+   }
+   return endpoint;
+}
+
+static const socklog_address_t *
+iologaddress(const iologaddr_t *address, iologjsonaddr_t *storage)
+{
+   socklog_address_t *json = &storage->address;
+#if HAVE_SOCKS_HOSTID
+   size_t i;
+#endif
+
+   memset(storage, 0, sizeof(*storage));
+   if (address == NULL)
+      return NULL;
+   if (address->local_isset)
+      json->local = iologendpoint(&address->local, &storage->local,
+                                  storage->localtext, sizeof(storage->localtext));
+   if (address->peer_isset)
+      json->peer = iologendpoint(&address->peer, &storage->peer,
+                                 storage->peertext, sizeof(storage->peertext));
+   if (address->auth_isset && address->auth.method != AUTHMETHOD_NOTSET
+   && address->auth.method != AUTHMETHOD_NOACCEPT) {
+      json->auth_method = method2string(address->auth.method);
+      json->auth_user = authname(&address->auth);
+      if (json->auth_user != NULL && *json->auth_user == NUL)
+         json->auth_user = NULL;
+   }
+#if HAVE_SOCKS_HOSTID
+   for (i = 0; i < MIN(address->hostidc, ELEMENTS(storage->hostids)); ++i)
+      if (inet_ntop(AF_INET, &address->hostidv[i], storage->hostidtext[i],
+                    sizeof(storage->hostidtext[i])) != NULL)
+         storage->hostids[json->hostid_count++] = storage->hostidtext[i];
+   json->hostids = storage->hostids;
+#endif
+   if (json->local == NULL && json->peer == NULL && json->auth_method == NULL
+   && json->hostid_count == 0)
+      return NULL;
+   return json;
+}
+
+static void
+slogeventf(const socklog_event_t *event, const char *format, ...)
+   __ATTRIBUTE__((FORMAT(printf, 2, 3)));
+
+static void
+iologevent(socklog_event_t *event, socklog_connection_t *connection,
+           iologjsonaddr_t *addresses, const rule_t *rule,
+           const connectionstate_t *state, const operation_t op,
+           const iologaddr_t *src, const iologaddr_t *dst,
+           const iologaddr_t *tosrc_proxy, const iologaddr_t *todst_proxy,
+           const char *data, const size_t datalen, const int error)
+{
+   memset(connection, 0, sizeof(*connection));
+   event->connection = connection;
+   switch (op) {
+      case OPERATION_ACCEPT:     event->type = SOCKLOG_ACCEPT;          break;
+      case OPERATION_HOSTID:     event->type = SOCKLOG_HOSTID;          break;
+      case OPERATION_CONNECT:    event->type = SOCKLOG_CONNECT;         break;
+      case OPERATION_BLOCK:      event->type = SOCKLOG_BLOCK;           break;
+      case OPERATION_TMPBLOCK:   event->type = SOCKLOG_TEMPORARY_BLOCK; break;
+      case OPERATION_DISCONNECT: event->type = SOCKLOG_DISCONNECT;      break;
+      case OPERATION_ERROR:      event->type = SOCKLOG_ERROR;           break;
+      case OPERATION_TMPERROR:   event->type = SOCKLOG_TEMPORARY_ERROR; break;
+      case OPERATION_IO:         event->type = SOCKLOG_IO;              break;
+      default: SERRX(op);
+   }
+   connection->rule_number = rule->number;
+   switch (rule->type) {
+      case object_crule:
+      case object_hrule:
+      case object_srule:
+      case object_monitor:
+         connection->rule_type = objecttype2string(rule->type);
+         break;
+      default: break;
+   }
+   /* An I/O error does not imply that a pass rule became a block rule. */
+   connection->verdict = verdict2string(op == OPERATION_BLOCK
+                                    || op == OPERATION_TMPBLOCK
+                                       ? VERDICT_BLOCK : rule->verdict);
+   connection->protocol = protocol2string(state->protocol);
+   if (state->command != SOCKS_UNKNOWN)
+      connection->command = command2string(state->command);
+   connection->source = iologaddress(src, &addresses[0]);
+   connection->destination = iologaddress(dst, &addresses[1]);
+   connection->source_proxy = iologaddress(tosrc_proxy, &addresses[2]);
+   connection->destination_proxy = iologaddress(todst_proxy, &addresses[3]);
+   if (op == OPERATION_IO) {
+      connection->io_bytes_isset = 1;
+      connection->io_bytes = datalen;
+      if (rule->log.data) {
+         connection->payload_isset = 1;
+         connection->payload = data;
+         connection->payload_len = datalen;
+      }
+   }
+   else if (data != NULL && *data != NUL) {
+      connection->detail = data;
+      /* Non-I/O callers pass text; datalen may be snprintf's required size. */
+      connection->detail_len = strlen(data);
+   }
+   else if (op == OPERATION_ERROR || op == OPERATION_TMPERROR) {
+      /* Only these legacy calls explicitly use errno as their error source.
+       * A supplied protocol diagnostic does not establish errno provenance.
+       */
+      connection->error_isset = 1;
+      connection->error_code = error;
+   }
+   if (rule->log.tcpinfo)
+      connection->tcp_info = state->tcpinfo;
+}
+
 void
 iolog(rule, state, op, src, dst, tosrc_proxy, todst_proxy, data, datalen)
    const rule_t *rule;
@@ -331,6 +484,12 @@ iolog(rule, state, op, src, dst, tosrc_proxy, todst_proxy, data, datalen)
    size_t datalen;
 {
    const char *function      = "iolog()";
+   const int saved_errno = errno;
+   const int json = sockscf.logformat == LOGFORMAT_JSON;
+   socklog_event_t event;
+   socklog_connection_t connection;
+   iologjsonaddr_t addresses[4];
+   int written = 0;
    const char *tcpinfoprefix = "\nTCP_INFO:\n";
    const int dologtcpinfo    = (rule->log.tcpinfo && state->tcpinfo != NULL) ?
                                1 : 0;
@@ -340,9 +499,12 @@ iolog(rule, state, op, src, dst, tosrc_proxy, todst_proxy, data, datalen)
    char srcdst_str[SRCDSTLEN], rulecommand[256],
         *buf, *bigbuf, regbuf[REGULARBUFLEN];
 
+   memset(&event, 0, sizeof(event));
    if (rule->log.data && datalen > DATALEN) {
-      const size_t bigbufsize =   (size_t)datalen * 4 /* x 4 for strvis(3) */
-                                + sizeof(regbuf);
+      const size_t bigbufsize = json
+         ? (datalen > SOCKS_LOG_JSON_MAX / 4 ? SOCKS_LOG_JSON_MAX
+            : MIN(datalen * 4 + sizeof(regbuf), SOCKS_LOG_JSON_MAX))
+         : datalen * 4 + sizeof(regbuf); /* x 4 for strvis(3) */
 
       slog(LOG_DEBUG,
            "%s: a datalen of %ld is too large to fit in the stack-allocated "
@@ -354,6 +516,7 @@ iolog(rule, state, op, src, dst, tosrc_proxy, todst_proxy, data, datalen)
          buflen = bigbufsize;
       }
       else {
+         event.truncated = 1;
          swarn("%s: failed to allocate %lu bytes of memory",
                function, (unsigned long)bigbufsize);
 
@@ -386,7 +549,7 @@ iolog(rule, state, op, src, dst, tosrc_proxy, todst_proxy, data, datalen)
       case OPERATION_CONNECT:
          if (rule->log.connect) {
             DO_BUILD(srcdst_str, dologdstinfo);
-            snprintf(buf, buflen,
+            written = snprintf(buf, buflen,
                     "[: %s%s%s",
                      srcdst_str,
                      DATASEPARATOR(data),
@@ -394,6 +557,8 @@ iolog(rule, state, op, src, dst, tosrc_proxy, todst_proxy, data, datalen)
          }
          else {
             free(bigbuf);
+            if (json)
+               errno = saved_errno;
             return;
          }
 
@@ -404,7 +569,7 @@ iolog(rule, state, op, src, dst, tosrc_proxy, todst_proxy, data, datalen)
          if (rule->log.connect || rule->log.disconnect
          ||  rule->log.data    || rule->log.iooperation) {
             DO_BUILD(srcdst_str, dologdstinfo);
-            snprintf(buf, buflen,
+            written = snprintf(buf, buflen,
                      "%c: %s%s%s",
                      op == OPERATION_BLOCK ? ']' : '-',
                      srcdst_str,
@@ -413,6 +578,8 @@ iolog(rule, state, op, src, dst, tosrc_proxy, todst_proxy, data, datalen)
          }
          else {
             free(bigbuf);
+            if (json)
+               errno = saved_errno;
             return;
          }
 
@@ -422,7 +589,7 @@ iolog(rule, state, op, src, dst, tosrc_proxy, todst_proxy, data, datalen)
       case OPERATION_DISCONNECT:
          if (rule->log.disconnect) {
             DO_BUILD(srcdst_str, dologdstinfo);
-            snprintf(buf, buflen,
+            written = snprintf(buf, buflen,
                      "]: %s%s%s",
                      srcdst_str,
                      DATASEPARATOR(data),
@@ -430,6 +597,8 @@ iolog(rule, state, op, src, dst, tosrc_proxy, todst_proxy, data, datalen)
          }
          else {
             free(bigbuf);
+            if (json)
+               errno = saved_errno;
             return;
          }
 
@@ -439,16 +608,18 @@ iolog(rule, state, op, src, dst, tosrc_proxy, todst_proxy, data, datalen)
       case OPERATION_TMPERROR:
          if (rule->log.error || rule->log.disconnect) {
             DO_BUILD(srcdst_str, dologdstinfo);
-            snprintf(buf, buflen,
+            written = snprintf(buf, buflen,
                      "%c: %s%s%s",
                      op == OPERATION_ERROR ? ']' : '-',
                      srcdst_str,
                      DATASEPARATOR((data == NULL || *data == NUL) ?
-                                          strerror(errno) : data),
-                     (data == NULL || *data == NUL) ? strerror(errno) : data);
+                                          strerror(json ? saved_errno : errno) : data),
+                     (data == NULL || *data == NUL) ? strerror(json ? saved_errno : errno) : data);
          }
          else {
             free(bigbuf);
+            if (json)
+               errno = saved_errno;
             return;
          }
 
@@ -464,6 +635,13 @@ iolog(rule, state, op, src, dst, tosrc_proxy, todst_proxy, data, datalen)
                lastbyteused = snprintf(buf, buflen,
                                        "-: %s (%lu): ",
                                        srcdst_str, (unsigned long)datalen);
+               written = (int)lastbyteused;
+               if (json && (lastbyteused >= buflen || buflen - lastbyteused < 4)) {
+                  event.truncated = 1;
+                  break;
+               }
+               if (json && datalen > (buflen - lastbyteused) / 4 - 1)
+                  event.truncated = 1;
                str2vis(data,
                        datalen,
                        &buf[lastbyteused],
@@ -471,12 +649,14 @@ iolog(rule, state, op, src, dst, tosrc_proxy, todst_proxy, data, datalen)
             }
             else {
                DO_BUILD(srcdst_str, dologdstinfo);
-               snprintf(buf, buflen,
+               written = snprintf(buf, buflen,
                         "-: %s (%lu)", srcdst_str, (unsigned long)datalen);
             }
          }
          else {
             free(bigbuf);
+            if (json)
+               errno = saved_errno;
             return;
          }
 
@@ -492,13 +672,25 @@ iolog(rule, state, op, src, dst, tosrc_proxy, todst_proxy, data, datalen)
             protocol2string(state->protocol),
             command2string(state->command));
 
-   slog(LOG_INFO, "%s %s%s%s",
-        rulecommand,
-        buf,
-        dologtcpinfo ? tcpinfoprefix  : "",
-        dologtcpinfo ? state->tcpinfo : "");
+   if (json) {
+      if (written < 0 || (size_t)written >= buflen)
+         event.truncated = 1;
+      iologevent(&event, &connection, addresses, rule, state, op,
+                  src, dst, tosrc_proxy, todst_proxy, data, datalen, saved_errno);
+      slogeventf(&event, "%s %s%s%s", rulecommand, buf,
+                  dologtcpinfo ? tcpinfoprefix : "",
+                  dologtcpinfo ? state->tcpinfo : "");
+   }
+   else
+      slog(LOG_INFO, "%s %s%s%s",
+           rulecommand,
+           buf,
+           dologtcpinfo ? tcpinfoprefix  : "",
+           dologtcpinfo ? state->tcpinfo : "");
 
    free(bigbuf);
+   if (json)
+      errno = saved_errno;
 }
 
 void
@@ -875,6 +1067,66 @@ jsonlimit(const int priority)
    return limit;
 }
 
+/* Include structured strings in the allocation estimate.  All arithmetic is
+ * saturated before multiplication; the estimate never exceeds the hard cap.
+ */
+static size_t
+jsonsizeadd(const size_t size, const size_t stringlen)
+{
+   if (stringlen > (SOCKS_LOG_JSON_MAX - size) / 6)
+      return SOCKS_LOG_JSON_MAX;
+   return size + stringlen * 6;
+}
+
+static size_t
+jsonstringsize(const size_t size, const char *string)
+{
+   return string == NULL ? size : jsonsizeadd(size, strlen(string));
+}
+
+static size_t
+jsonwanted(const socklog_context_t *context, const socklog_event_t *event)
+{
+   size_t wanted = jsonsizeadd(1024, event->message_len), i, j;
+   const socklog_connection_t *c = event->connection;
+   const socklog_address_t *addresses[4];
+
+   wanted = jsonstringsize(wanted, context->program);
+   if (c == NULL)
+      return wanted;
+   wanted += MIN((size_t)1536, SOCKS_LOG_JSON_MAX - wanted);
+   wanted = jsonstringsize(wanted, c->rule_type);
+   wanted = jsonstringsize(wanted, c->verdict);
+   wanted = jsonstringsize(wanted, c->protocol);
+   wanted = jsonstringsize(wanted, c->command);
+   wanted = jsonsizeadd(wanted, c->detail_len);
+   if (c->payload_isset)
+      wanted = jsonsizeadd(wanted, c->payload_len);
+   wanted = jsonstringsize(wanted, c->tcp_info);
+   addresses[0] = c->source;
+   addresses[1] = c->destination;
+   addresses[2] = c->source_proxy;
+   addresses[3] = c->destination_proxy;
+   for (i = 0; i < ELEMENTS(addresses); ++i) {
+      const socklog_address_t *a = addresses[i];
+      if (a == NULL)
+         continue;
+      if (a->local != NULL) {
+         wanted = jsonstringsize(wanted, a->local->type);
+         wanted = jsonstringsize(wanted, a->local->address);
+      }
+      if (a->peer != NULL) {
+         wanted = jsonstringsize(wanted, a->peer->type);
+         wanted = jsonstringsize(wanted, a->peer->address);
+      }
+      wanted = jsonstringsize(wanted, a->auth_method);
+      wanted = jsonstringsize(wanted, a->auth_user);
+      for (j = 0; j < a->hostid_count && wanted != SOCKS_LOG_JSON_MAX; ++j)
+         wanted = jsonstringsize(wanted, a->hostids[j]);
+   }
+   return wanted;
+}
+
 static void
 emitjson(const int priority, const socklog_event_t *event)
 {
@@ -882,7 +1134,7 @@ emitjson(const int priority, const socklog_event_t *event)
    socklog_event_t bounded = *event;
    socklog_context_t context;
    struct timeval now;
-   size_t capacity, wanted, len, programlen;
+   size_t capacity, len;
 
    now.tv_sec = now.tv_usec = 0;
    (void)gettimeofday(&now, NULL);
@@ -900,16 +1152,7 @@ emitjson(const int priority, const socklog_event_t *event)
       default:            context.process = "unknown";   break;
    }
 
-   /* Six output bytes per input byte is the worst case for JSON escapes.
-    * Bound the arithmetic as well as both message and output allocations.
-    */
-   programlen = context.program == NULL ? 0 : strlen(context.program);
-   wanted = SOCKS_LOG_JSON_MAX;
-   if (event->message_len < (SOCKS_LOG_JSON_MAX - 1024) / 6
-   && programlen < (SOCKS_LOG_JSON_MAX - 1024) / 6 - event->message_len)
-      wanted = 1024 + 6 * (event->message_len + programlen);
-
-   capacity = MIN(jsonlimit(priority), wanted);
+   capacity = MIN(jsonlimit(priority), jsonwanted(&context, event));
    if (capacity > sizeof(local)) {
       if (!sockscf.state.insignal)
          allocated = malloc(capacity);
@@ -956,7 +1199,8 @@ slogevent(const int priority, const socklog_event_t *event)
 }
 
 static void
-vslogjson(const int priority, const char *message, va_list ap, va_list apcopy)
+vslogjson(const int priority, const socklog_event_t *template,
+          const char *message, va_list ap, va_list apcopy)
 {
    const int saved_errno = errno;
    char local[2048], *buf = local, *allocated = NULL;
@@ -964,8 +1208,12 @@ vslogjson(const int priority, const char *message, va_list ap, va_list apcopy)
    int length;
    socklog_event_t event;
 
-   memset(&event, 0, sizeof(event));
-   event.type = SOCKLOG_MESSAGE;
+   if (template == NULL) {
+      memset(&event, 0, sizeof(event));
+      event.type = SOCKLOG_MESSAGE;
+   }
+   else
+      event = *template;
    length = vsnprintf(buf, capacity, message, ap);
    if (length < 0)
       return;
@@ -995,6 +1243,24 @@ vslogjson(const int priority, const char *message, va_list ap, va_list apcopy)
       event.truncated = 1;
    emitjson(priority, &event);
    free(allocated);
+}
+
+static void
+slogeventf(const socklog_event_t *event, const char *format, ...)
+{
+   const int saved_errno = errno;
+   va_list ap, apcopy;
+
+#if !SOCKS_IGNORE_SIGNALSAFETY
+   if (sockscf.state.insignal)
+      return;
+#endif
+   va_start(ap, format);
+   va_start(apcopy, format);
+   vslogjson(LOG_INFO, event, format, ap, apcopy);
+   va_end(apcopy);
+   va_end(ap);
+   errno = saved_errno;
 }
 #endif /* !SOCKS_CLIENT */
 
@@ -1120,7 +1386,7 @@ vslog(priority, message, ap, apcopy)
 #if !SOCKS_CLIENT
    if (sockscf.logformat == LOGFORMAT_JSON) {
       errno = errno_s;
-      vslogjson(priority, message, ap, apcopy);
+      vslogjson(priority, NULL, message, ap, apcopy);
       errno = errno_s;
       return;
    }

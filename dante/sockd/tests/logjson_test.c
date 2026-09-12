@@ -15,7 +15,15 @@ main(int argc, char **argv)
    socklog_context_t context = {1789257600, 123456, 1234,
                                "info", "mother", "danted"};
    socklog_counters_t counters = {0};
-   socklog_event_t event = {SOCKLOG_MESSAGE, input, 0, 0, NULL};
+   socklog_event_t event = {SOCKLOG_MESSAGE, input, 0, 0, NULL, NULL};
+   socklog_endpoint_t ipv4 = {"ipv4", "192.0.2.3", 1080, 0, 0};
+   socklog_endpoint_t ipv6 = {"ipv6", "fe80::1", 0, 9, 1};
+   socklog_endpoint_t domain = {"domain", "例え.example", 443, 0, 0};
+   const char *hostids[] = {"192.0.2.8", "é\"\n\377"};
+   socklog_address_t source = {&ipv4, &ipv6, "username", "é\"\n\377",
+                               hostids, 2};
+   socklog_address_t destination = {NULL, &domain, NULL, NULL, NULL, 0};
+   socklog_connection_t connection = {0};
    size_t capacity, length, i;
 
    assert(argc == 3);
@@ -32,7 +40,57 @@ main(int argc, char **argv)
    memset(metadata, 'M', sizeof(metadata) - 1);
    metadata[sizeof(metadata) - 1] = '\0';
 
-   if (strcmp(argv[2], "metadata") == 0)
+   if (strncmp(argv[2], "connection", 10) == 0) {
+      event.connection = &connection;
+      event.type = SOCKLOG_CONNECT;
+      if (strcmp(argv[2], "connection_zero") != 0) {
+         connection.rule_number = UINT64_MAX;
+         connection.rule_type = "socks";
+         connection.verdict = "pass";
+         connection.protocol = "tcp";
+         connection.command = "connect";
+         connection.source = &source;
+         connection.destination = &destination;
+         connection.source_proxy = &destination;
+         connection.destination_proxy = &source;
+         connection.error_isset = 1;
+         connection.error_code = -123;
+         connection.detail = message;
+         connection.detail_len = event.message_len;
+         connection.io_bytes_isset = 1;
+         connection.io_bytes = UINT64_MAX;
+         connection.payload_isset = 1;
+         connection.payload = message;
+         connection.payload_len = event.message_len;
+         connection.tcp_info = "rtt: 3\nquote: \"\\";
+         if (strcmp(argv[2], "connection_pressure") == 0) {
+            ipv4.address = metadata;
+            connection.rule_type = metadata;
+            connection.command = metadata;
+            source.auth_user = metadata;
+            connection.tcp_info = metadata;
+         }
+      }
+      else {
+         connection.error_isset = 1;
+         connection.io_bytes_isset = 1;
+         connection.payload_isset = 1;
+         connection.detail = "";
+         connection.source = &destination;
+         destination.peer = &ipv6;
+         destination.auth_method = "none";
+         ipv6.scope_id = 0;
+      }
+      if (strcmp(argv[2], "connection_sparse") == 0) {
+         memset(&connection, 0, sizeof(connection));
+         memset(&source, 0, sizeof(source));
+         memset(&destination, 0, sizeof(destination));
+         connection.source = &source;
+         connection.destination = &destination;
+         source.auth_user = "user-only";
+      }
+   }
+   else if (strcmp(argv[2], "metadata") == 0)
       context.level = context.process = context.program = metadata;
    else if (strcmp(argv[2], "metadata_unicode") == 0) {
       context.level = "info\"\n\377";

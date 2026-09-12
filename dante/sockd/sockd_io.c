@@ -3396,6 +3396,9 @@ connectstatus(io, badfd)
          int fdv[] = { io->src.s, io->dst.s };
          const char *tcpinfo = get_tcpinfo(ELEMENTS(fdv), fdv, NULL, 0);
 
+         if (sockscf.logformat == LOGFORMAT_JSON)
+            io->state.tcpinfo = tcpinfo;
+
          if (tcpinfo != NULL) {
             snprintf(buf, sizeof(buf),
                      "\nTCP_INFO:\n"
@@ -3415,8 +3418,9 @@ connectstatus(io, badfd)
             &dst,
             NULL,
             NULL,
-            buf,
-            strlen(buf));
+            sockscf.logformat == LOGFORMAT_JSON ? NULL : buf,
+            sockscf.logformat == LOGFORMAT_JSON ? 0 : strlen(buf));
+      io->state.tcpinfo = NULL;
 
       if (io_fillset_connectinprogress(NULL) == -1)
          iostate.haveconnectinprogress = 0;

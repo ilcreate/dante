@@ -85,7 +85,7 @@ utf8_width(const unsigned char *text, size_t available)
 }
 
 /* limit reserves the caller's closing quotes, required fields, LF and NUL. */
-static void
+static int
 string_content(jsonwriter_t *writer, const char *text, size_t length,
                int terminated, size_t limit)
 {
@@ -96,7 +96,7 @@ string_content(jsonwriter_t *writer, const char *text, size_t length,
    char escape;
 
    if (text == NULL)
-      return;
+      return 1;
 
    while (pos < length && (!terminated || bytes[pos] != '\0')) {
       byte = bytes[pos];
@@ -123,7 +123,7 @@ string_content(jsonwriter_t *writer, const char *text, size_t length,
 
       if (encoded > limit - writer->used) {
          writer->truncated = 1;
-         break;
+         return 0;
       }
       if (escape != '\0') {
          writer->buf[writer->used++] = '\\';
@@ -139,6 +139,7 @@ string_content(jsonwriter_t *writer, const char *text, size_t length,
             writer->buf[writer->used++] = (char)bytes[pos + i];
       pos += width;
    }
+   return 1;
 }
 
 static const char *
@@ -160,28 +161,219 @@ event_name(socklog_event_type_t type)
    return "message";
 }
 
-static void
-counter(jsonwriter_t *writer, const char *key, size_t keylen, uint64_t value,
-        size_t limit)
+/* Optional properties are transactions: failed writes roll back used bytes. */
+static int
+bounded_literal(jsonwriter_t *writer, const char *text, size_t limit)
+{
+   size_t length = 0;
+
+   while (text[length] != '\0') {
+      if (length == limit - writer->used) {
+         writer->truncated = 1;
+         return 0;
+      }
+      ++length;
+   }
+   literal(writer, text);
+   return 1;
+}
+
+static int
+string_field(jsonwriter_t *writer, const char *key, const char *text,
+             size_t length, int terminated, size_t limit)
+{
+   const size_t start = writer->used;
+
+   if (writer->used == limit)
+      goto omitted;
+   if (!bounded_literal(writer, key, limit - 1)
+   ||  !bounded_literal(writer, "\"", limit - 1)
+   ||  !string_content(writer, text, length, terminated, limit - 1))
+      goto omitted;
+   literal(writer, "\"");
+   return 1;
+
+omitted:
+   writer->used = start;
+   writer->truncated = 1;
+   return 0;
+}
+
+static int
+number_field(jsonwriter_t *writer, const char *key, uint64_t value,
+             size_t limit)
 {
    char digits[20];
+   const size_t start = writer->used;
    size_t count = unsigned_digits(value, digits), i;
 
-   if (keylen + count > limit - writer->used) {
+   if (!bounded_literal(writer, key, limit)
+   ||  count > limit - writer->used) {
+      writer->used = start;
       writer->truncated = 1;
-      return;
+      return 0;
    }
-   literal(writer, key);
    for (i = 0; i < count; ++i)
       writer->buf[writer->used++] = digits[i];
+   return 1;
+}
+
+/* Opening an object reserves its closing brace before any child is written. */
+static int
+object_begin(jsonwriter_t *writer, const char *key, size_t limit)
+{
+   if (writer->used == limit) {
+      writer->truncated = 1;
+      return 0;
+   }
+   return bounded_literal(writer, key, limit - 1);
+}
+
+static int
+endpoint(jsonwriter_t *writer, const char *key,
+         const socklog_endpoint_t *value, size_t limit)
+{
+   const size_t start = writer->used;
+
+   if (!object_begin(writer, key, limit))
+      goto omitted;
+   --limit;
+   if (!number_field(writer, "\"port\":", value->port, limit)
+   ||  (value->type != NULL
+        && !string_field(writer, ",\"type\":", value->type, SIZE_MAX, 1, limit))
+   ||  (value->address != NULL
+        && !string_field(writer, ",\"address\":", value->address, SIZE_MAX, 1,
+                         limit))
+   ||  (value->scope_id_isset
+        && !number_field(writer, ",\"scope_id\":", value->scope_id, limit)))
+      goto omitted;
+   literal(writer, "}");
+   return 1;
+
+omitted:
+   writer->used = start;
+   return 0;
+}
+
+static void
+address(jsonwriter_t *writer, const char *key,
+        const socklog_address_t *value, size_t limit)
+{
+   const size_t start = writer->used;
+   size_t members, i, items;
+
+   if (value == NULL
+   ||  (value->local == NULL && value->peer == NULL
+        && value->auth_method == NULL && value->auth_user == NULL
+        && (value->hostids == NULL || value->hostid_count == 0)))
+      return;
+   if (!object_begin(writer, key, limit))
+      goto omitted;
+   --limit;
+   members = writer->used;
+   if (value->local != NULL
+   &&  !endpoint(writer, "\"local\":{", value->local, limit))
+      goto omitted;
+   if (value->peer != NULL
+   &&  !endpoint(writer, writer->used == members ? "\"peer\":{" : ",\"peer\":{",
+                 value->peer, limit))
+      goto omitted;
+   if (value->auth_method != NULL || value->auth_user != NULL) {
+      if (!object_begin(writer, writer->used == members
+                                ? "\"authentication\":{" : ",\"authentication\":{",
+                        limit))
+         goto omitted;
+      if ((value->auth_method != NULL
+           && !string_field(writer, "\"method\":", value->auth_method,
+                            SIZE_MAX, 1, limit - 1))
+      ||  (value->auth_user != NULL
+           && !string_field(writer, value->auth_method == NULL
+                                     ? "\"user\":" : ",\"user\":",
+                            value->auth_user, SIZE_MAX, 1, limit - 1)))
+         goto omitted;
+      literal(writer, "}");
+   }
+   if (value->hostids != NULL && value->hostid_count != 0) {
+      if (!object_begin(writer, writer->used == members
+                                ? "\"hostids\":[" : ",\"hostids\":[", limit))
+         goto omitted;
+      items = writer->used;
+      for (i = 0; i < value->hostid_count; ++i)
+         if (value->hostids[i] != NULL
+         &&  !string_field(writer, writer->used == items ? "" : ",",
+                           value->hostids[i], SIZE_MAX, 1, limit - 1))
+            goto omitted;
+      literal(writer, "]");
+   }
+   literal(writer, "}");
+   return;
+
+omitted:
+   writer->used = start;
+}
+
+static void
+connection(jsonwriter_t *writer, const socklog_connection_t *value,
+           size_t limit)
+{
+   size_t start = writer->used;
+   char code[22];
+   jsonwriter_t number;
+
+   if (value == NULL)
+      return;
+   if (object_begin(writer, ",\"rule\":{", limit)
+   &&  number_field(writer, "\"number\":", value->rule_number, limit - 1)
+   &&  (value->rule_type == NULL
+        || string_field(writer, ",\"type\":", value->rule_type,
+                        SIZE_MAX, 1, limit - 1)))
+      literal(writer, "}");
+   else
+      writer->used = start;
+
+#define TEXT(member)                                                       \
+   if (value->member != NULL)                                              \
+      (void)string_field(writer, ",\"" #member "\":", value->member,          \
+                         SIZE_MAX, 1, limit)
+   TEXT(verdict);
+   TEXT(protocol);
+   TEXT(command);
+   address(writer, ",\"source\":{", value->source, limit);
+   address(writer, ",\"destination\":{", value->destination, limit);
+   address(writer, ",\"source_proxy\":{", value->source_proxy, limit);
+   address(writer, ",\"destination_proxy\":{", value->destination_proxy, limit);
+   if (value->error_isset) {
+      start = writer->used;
+      number.buf = code;
+      number.used = 0;
+      number.truncated = 0;
+      integer(&number, value->error_code);
+      code[number.used] = '\0';
+      if (object_begin(writer, ",\"error\":{", limit)
+      &&  bounded_literal(writer, "\"code\":", limit - 1)
+      &&  bounded_literal(writer, code, limit - 1))
+         literal(writer, "}");
+      else
+         writer->used = start;
+   }
+   if (value->detail != NULL)
+      (void)string_field(writer, ",\"detail\":", value->detail,
+                         value->detail_len, 0, limit);
+   if (value->io_bytes_isset)
+      (void)number_field(writer, ",\"io_bytes\":", value->io_bytes, limit);
+   if (value->payload_isset)
+      (void)string_field(writer, ",\"payload\":", value->payload,
+                         value->payload_len, 0, limit);
+   TEXT(tcp_info);
+#undef TEXT
 }
 
 /* sizeof includes the NUL, so these suffixes reserve it as well. */
 #define JSON_END       "\",\"truncated\":false}\n"
-#define JSON_MESSAGE   "\",\"message\":\"" JSON_END
+#define JSON_OPTIONAL  ",\"message\":\"" JSON_END
+#define JSON_MESSAGE   "\"" JSON_OPTIONAL
 #define JSON_PROGRAM   "\",\"program\":\"" JSON_MESSAGE
 #define JSON_PROCESS   "\",\"process\":\"" JSON_PROGRAM
-#define JSON_STRINGS   ",\"level\":\"" JSON_PROCESS
 
 size_t
 socks_logjson(char *buf, size_t capacity, const socklog_context_t *context,
@@ -214,11 +406,23 @@ socks_logjson(char *buf, size_t capacity, const socklog_context_t *context,
    literal(&writer, event_name(event->type));
    literal(&writer, "\"");
 
+   literal(&writer, ",\"level\":\"");
+   string_content(&writer, context->level, SIZE_MAX, 1,
+                  capacity - sizeof(JSON_PROCESS));
+   literal(&writer, "\",\"process\":\"");
+   string_content(&writer, context->process, SIZE_MAX, 1,
+                  capacity - sizeof(JSON_PROGRAM));
+   literal(&writer, "\",\"program\":\"");
+   string_content(&writer, context->program, SIZE_MAX, 1,
+                  capacity - sizeof(JSON_MESSAGE));
+   literal(&writer, "\"");
+   connection(&writer, event->connection, capacity - sizeof(JSON_OPTIONAL));
+
    if (counts != NULL) {
 #define COUNTER(mask, member)                                                \
       if ((counts->present & (mask)) != 0)                                  \
-         counter(&writer, ",\"" #member "\":", sizeof(",\"" #member "\":") - 1, \
-                 counts->member, capacity - sizeof(JSON_STRINGS))
+         (void)number_field(&writer, ",\"" #member "\":", counts->member,    \
+                            capacity - sizeof(JSON_OPTIONAL))
       COUNTER(SOCKLOG_COUNTER_DURATION_US, duration_us);
       COUNTER(SOCKLOG_COUNTER_CLIENT_BYTES_READ, client_bytes_read);
       COUNTER(SOCKLOG_COUNTER_CLIENT_BYTES_WRITTEN, client_bytes_written);
@@ -231,16 +435,7 @@ socks_logjson(char *buf, size_t capacity, const socklog_context_t *context,
 #undef COUNTER
    }
 
-   literal(&writer, ",\"level\":\"");
-   string_content(&writer, context->level, SIZE_MAX, 1,
-                  capacity - sizeof(JSON_PROCESS));
-   literal(&writer, "\",\"process\":\"");
-   string_content(&writer, context->process, SIZE_MAX, 1,
-                  capacity - sizeof(JSON_PROGRAM));
-   literal(&writer, "\",\"program\":\"");
-   string_content(&writer, context->program, SIZE_MAX, 1,
-                  capacity - sizeof(JSON_MESSAGE));
-   literal(&writer, "\",\"message\":\"");
+   literal(&writer, ",\"message\":\"");
    string_content(&writer, event->message, event->message_len, 0,
                   capacity - sizeof(JSON_END));
    literal(&writer, writer.truncated ? "\",\"truncated\":true}\n" : JSON_END);

@@ -30,6 +30,75 @@ def serialize(message=b"", capacity=65536, mode="message"):
 
 
 class LogJsonTest(unittest.TestCase):
+    def test_connection_fields(self):
+        value = serialize(b'hello\0\n"\\' + "é€😀".encode(), mode="connection")
+        self.assertEqual(value["rule"], {"number": 18446744073709551615, "type": "socks"})
+        self.assertEqual(value["verdict"], "pass")
+        self.assertEqual(value["protocol"], "tcp")
+        self.assertEqual(value["command"], "connect")
+        self.assertEqual(value["source"], {
+            "local": {"type": "ipv4", "address": "192.0.2.3", "port": 1080},
+            "peer": {"type": "ipv6", "address": "fe80::1", "port": 0, "scope_id": 9},
+            "authentication": {"method": "username", "user": 'é"\nÿ'},
+            "hostids": ["192.0.2.8", 'é"\nÿ']})
+        self.assertEqual(value["destination"], {
+            "peer": {"type": "domain", "address": "例え.example", "port": 443}})
+        self.assertEqual(value["source_proxy"], value["destination"])
+        self.assertEqual(value["destination_proxy"], value["source"])
+        self.assertEqual(value["error"], {"code": -123})
+        self.assertEqual(value["io_bytes"], 18446744073709551615)
+        self.assertEqual(value["detail"], value["message"])
+        self.assertEqual(value["payload"], value["message"])
+        self.assertEqual(value["tcp_info"], 'rtt: 3\nquote: "\\')
+        self.assertFalse(value["truncated"])
+
+    def test_connection_known_zero_and_unknown_omission(self):
+        value = serialize(mode="connection_zero")
+        self.assertEqual(value["rule"], {"number": 0})
+        self.assertEqual(value["error"], {"code": 0})
+        self.assertEqual(value["io_bytes"], 0)
+        self.assertEqual(value["payload"], "")
+        self.assertEqual(value["detail"], "")
+        self.assertEqual(value["source"], {
+            "peer": {"type": "ipv6", "address": "fe80::1", "port": 0, "scope_id": 0},
+            "authentication": {"method": "none"}})
+        self.assertEqual(set(value), COMMON | {
+            "rule", "source", "error", "io_bytes", "payload", "detail"})
+        self.assertFalse(value["truncated"])
+
+    def test_connection_binary_fields(self):
+        for raw in [bytes(range(256)), b"\xc0\xaf", b"\xed\xa0\x80",
+                    b"\xf4\x90\x80\x80", b"\xe2\x82", b"\xf0\x90\x80",
+                    b"\xc2", b"\xe0\x80\x80", b"\xf0\x80\x80\x80",
+                    b"\xf0A\x80\x80", b"\xe2\0\x80", b"\xff"]:
+            value = serialize(raw, mode="connection")
+            self.assertEqual(value["payload"], raw.decode("latin1"))
+            self.assertEqual(value["detail"], value["payload"])
+
+    def test_connection_sparse_omits_unknown_objects_and_fields(self):
+        value = serialize(mode="connection_sparse")
+        self.assertEqual(set(value), COMMON | {"rule", "source"})
+        self.assertEqual(value["rule"], {"number": 0})
+        self.assertEqual(value["source"], {"authentication": {"user": "user-only"}})
+        self.assertFalse(value["truncated"])
+
+    def test_connection_capacity_boundaries(self):
+        for mode in ["connection", "connection_pressure"]:
+            full = serialize(b'hello\0\n"\\' + "é€😀".encode(), mode=mode)
+            for capacity in list(range(512, 1600)) + [2048, 4096, 8192, 65536, 65560]:
+                value = serialize(b'hello\0\n"\\' + "é€😀".encode(), capacity, mode)
+                for key in ["level", "process", "program"]:
+                    self.assertEqual(value[key], full[key])
+                for key in value.keys() - COMMON:
+                    self.assertEqual(value[key], full[key])
+                self.assertEqual(value["truncated"], value != full)
+        for capacity in [512, 513, 1024, 4096, 65536, 65560]:
+            value = serialize(b"\0" * 20000, capacity, "connection")
+            self.assertNotIn("detail", value)
+            self.assertNotIn("payload", value)
+            self.assertTrue(value["truncated"])
+            self.assertTrue(("\0" * 20000).startswith(value["message"]))
+
     def test_common_fields_and_escaping(self):
         message = b'quote" backslash\\ tab\t CR\r LF\n NUL\0 end'
         self.assertEqual(serialize(message), {

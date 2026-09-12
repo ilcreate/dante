@@ -38,7 +38,9 @@ EXTRA_sockd_SOURCES += ../libscompat/daemon.c ../libscompat/seteuid.c   \
 EXTRA_DIST = tests/README.logformat.md tests/logformat-tests.mk \
    tests/logformat_config_test.py tests/logformat_lifecycle_test.c \
    tests/logformat_client_test.c tests/logformat_logger_test.c \
-   tests/logformat_logger_test.py tests/logjson_test.c tests/logjson_test.py
+   tests/logformat_logger_test.py tests/logjson_test.c tests/logjson_test.py \
+   tests/logformat_iolog_test.c tests/logformat_iolog_test.py \
+   tests/logformat_iolog_integration_test.py
 
 #use preloading if enabled and possible
 if SERVER_INTERPOSITION

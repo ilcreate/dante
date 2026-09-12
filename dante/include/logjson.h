@@ -42,12 +42,44 @@ typedef struct socklog_counters_t {
    uint64_t target_packets_read, target_packets_written;
 } socklog_counters_t;
 
+typedef struct socklog_endpoint_t {
+   /* NULL strings are unknown; port is known whenever the endpoint exists. */
+   const char *type, *address;
+   unsigned int port, scope_id;
+   int scope_id_isset;
+} socklog_endpoint_t;
+
+typedef struct socklog_address_t {
+   const socklog_endpoint_t *local, *peer;
+   const char *auth_method, *auth_user;
+   const char *const *hostids;
+   size_t hostid_count;
+} socklog_address_t;
+
+typedef struct socklog_connection_t {
+   /* Non-NULL connection implies a known rule number, including zero. */
+   uint64_t rule_number;
+   const char *rule_type, *verdict, *protocol, *command;
+   const socklog_address_t *source, *destination;
+   const socklog_address_t *source_proxy, *destination_proxy;
+   int error_isset, error_code;
+   const char *detail;
+   size_t detail_len;
+   int io_bytes_isset;
+   uint64_t io_bytes;
+   int payload_isset;
+   const char *payload;
+   size_t payload_len;
+   const char *tcp_info;
+} socklog_connection_t;
+
 typedef struct socklog_event_t {
    socklog_event_type_t type;
    const char *message;
    size_t message_len;
    int truncated;
    const socklog_counters_t *counters;
+   const socklog_connection_t *connection;
 } socklog_event_t;
 
 typedef struct socklog_context_t {
@@ -61,12 +93,15 @@ typedef struct socklog_context_t {
  * capacity includes the trailing NUL and is capped at SOCKS_LOG_JSON_MAX.
  * Returns bytes excluding NUL and including exactly one final newline, or
  * zero without modifying buf if capacity < SOCKS_LOG_JSON_MIN.  context and
- * event must be non-NULL.  NULL string values are represented as empty strings.
- * Metadata strings are NUL-terminated; message is length-delimited.
+ * event must be non-NULL. NULL common strings become empty strings; unknown
+ * optional strings are omitted. Metadata strings are NUL-terminated;
+ * message, detail and payload are length-delimited. payload_isset preserves
+ * a known empty payload, including a NULL pointer with zero length.
  *
- * Common keys always survive truncation.  Under pressure, optional counters
- * are omitted as whole properties and strings are shortened at encoded
- * character boundaries; either sets truncated.  errno is preserved.
+ * Common keys always survive truncation and precede optional metadata.
+ * Under pressure, optional properties/objects are omitted whole and common
+ * strings are shortened at encoded character boundaries; either sets
+ * truncated. The serializer allocates no memory and preserves errno.
  */
 size_t socks_logjson(char *buf, size_t capacity,
                     const socklog_context_t *context,

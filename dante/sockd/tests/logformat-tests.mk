@@ -37,3 +37,17 @@ logjson_test: $(srcdir)/tests/logjson_test.c $(srcdir)/../lib/logjson.c $(srcdir
 .PHONY: check-logjson
 check-logjson: logjson_test
 	python3 $(srcdir)/tests/logjson_test.py ./logjson_test -v
+
+logformat_iolog_test.o: $(srcdir)/tests/logformat_iolog_test.c $(srcdir)/tests/logformat_logger_test.c $(srcdir)/../lib/log.c
+	$(COMPILE) -UNDEBUG -c $(srcdir)/tests/logformat_iolog_test.c -o $@
+
+logformat_iolog_test: $(filter-out sockd.o log.o,$(sockd_OBJECTS)) logformat_server_test.o logformat_iolog_test.o
+	$(LINK) $(filter-out sockd.o log.o,$(sockd_OBJECTS)) logformat_server_test.o logformat_iolog_test.o $(sockd_LDADD) $(LIBS)
+
+.PHONY: check-logformat-iolog
+check-logformat-iolog: logformat_iolog_test
+	python3 $(srcdir)/tests/logformat_iolog_test.py ./logformat_iolog_test -v
+
+.PHONY: check-logformat-iolog-integration
+check-logformat-iolog-integration: sockd
+	python3 $(srcdir)/tests/logformat_iolog_integration_test.py ./sockd -v

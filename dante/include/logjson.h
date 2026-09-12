@@ -19,7 +19,8 @@ typedef enum {
    SOCKLOG_ERROR,
    SOCKLOG_TEMPORARY_ERROR,
    SOCKLOG_IO,
-   SOCKLOG_SESSION_SNAPSHOT
+   SOCKLOG_SESSION_SNAPSHOT,
+   SOCKLOG_SESSION_CLOSE
 } socklog_event_type_t;
 
 #define SOCKLOG_COUNTER_DURATION_US             (1U << 0)
@@ -71,6 +72,10 @@ typedef struct socklog_connection_t {
    const char *payload;
    size_t payload_len;
    const char *tcp_info;
+   /* Session summaries: scope distinguishes data, control and UDP buckets. */
+   const char *reason, *side, *timeout, *scope;
+   int idle_isset;
+   uint64_t idle_us;
 } socklog_connection_t;
 
 typedef struct socklog_event_t {

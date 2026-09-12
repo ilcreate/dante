@@ -90,6 +90,36 @@ main(int argc, char **argv)
          source.auth_user = "user-only";
       }
    }
+   else if (strncmp(argv[2], "session", 7) == 0) {
+      event.type = SOCKLOG_SESSION_CLOSE;
+      event.connection = &connection;
+      event.counters = &counters;
+      connection.scope = "session";
+      connection.reason = "io_error";
+      connection.side = "target";
+      connection.timeout = "quoted\"\n\377";
+      connection.error_isset = 1;
+      connection.error_code = 61;
+      counters.present = SOCKLOG_COUNTER_ALL;
+      counters.duration_us = UINT64_MAX;
+      counters.client_bytes_read = 1;
+      counters.client_bytes_written = 2;
+      counters.target_bytes_read = 3;
+      counters.target_bytes_written = 4;
+      counters.client_packets_read = 5;
+      counters.client_packets_written = 6;
+      counters.target_packets_read = 7;
+      counters.target_packets_written = 8;
+      if (strcmp(argv[2], "session_snapshot") == 0) {
+         event.type = SOCKLOG_SESSION_SNAPSHOT;
+         connection.scope = "udp_target";
+         connection.reason = connection.side = connection.timeout = NULL;
+         connection.error_isset = 0;
+         connection.idle_isset = 1;
+      }
+      if (strcmp(argv[2], "session_pressure") == 0)
+         connection.reason = connection.side = connection.timeout = metadata;
+   }
    else if (strcmp(argv[2], "metadata") == 0)
       context.level = context.process = context.program = metadata;
    else if (strcmp(argv[2], "metadata_unicode") == 0) {

@@ -48,6 +48,8 @@
 #ifndef _SOCKD_H_
 #define _SOCKD_H_
 
+#include "logjson.h"
+
 #if HAVE_SCHED_H
 #include <sched.h>
 #endif /* HAVE_SCHED_H */
@@ -3768,6 +3770,22 @@ iolog(const rule_t *rule, const connectionstate_t *state, const operation_t op,
  *    reach "dst.host".
  * - "data" and "datalen" are interpreted depending on "operation".
  */
+
+/* Log one already-selected session summary using native addresses/counters.
+ * The caller retains rule selection and cleanup; this does not emit iolog's
+ * separate operation event. metadata supplies reason/side/timeout/scope/idle
+ * and an explicitly captured error, not address or credential objects.
+ */
+void slogconnection(socklog_event_type_t type, const rule_t *rule,
+                    const connectionstate_t *state,
+                    const iologaddr_t *src, const iologaddr_t *dst,
+                    const iologaddr_t *source_proxy,
+                    const iologaddr_t *dest_proxy,
+                    const socklog_counters_t *counters,
+                    const socklog_connection_t *metadata,
+                    const char *format, ...)
+   __ATTRIBUTE__((FORMAT(printf, 10, 11)));
+
 
 char *
 build_addrstr_src(const struct hostid *hostid, 

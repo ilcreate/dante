@@ -30,6 +30,37 @@ def serialize(message=b"", capacity=65536, mode="message"):
 
 
 class LogJsonTest(unittest.TestCase):
+    def test_session_close_metadata(self):
+        value = serialize(b"closed", mode="session")
+        self.assertEqual(value["event"], "session_close")
+        self.assertEqual(value["scope"], "session")
+        self.assertEqual(value["reason"], "io_error")
+        self.assertEqual(value["side"], "target")
+        self.assertEqual(value["timeout"], 'quoted"\nÿ')
+        self.assertEqual(value["error"], {"code": 61})
+        self.assertEqual(value["duration_us"], 2**64 - 1)
+        for field, expected in (("client_bytes_read", 1), ("client_bytes_written", 2),
+                ("target_bytes_read", 3), ("target_bytes_written", 4),
+                ("client_packets_read", 5), ("client_packets_written", 6),
+                ("target_packets_read", 7), ("target_packets_written", 8)):
+            self.assertEqual(value[field], expected)
+
+    def test_snapshot_omits_close_reason_and_keeps_zero_idle(self):
+        value = serialize(mode="session_snapshot")
+        self.assertEqual(value["event"], "session_snapshot")
+        self.assertEqual(value["scope"], "udp_target")
+        self.assertEqual(value["idle_us"], 0)
+        for field in ("reason", "side", "timeout", "error"):
+            self.assertNotIn(field, value)
+
+    def test_session_pressure(self):
+        for capacity in (512, 513, 1024, 2048, 4096, 16384, 65536):
+            value = serialize(b"closed", capacity, "session_pressure")
+            for field in ("reason", "side", "timeout"):
+                if field in value:
+                    self.assertEqual(value[field], "M" * 4096)
+            self.assertEqual(value["truncated"], capacity < 16384)
+
     def test_connection_fields(self):
         value = serialize(b'hello\0\n"\\' + "é€😀".encode(), mode="connection")
         self.assertEqual(value["rule"], {"number": 18446744073709551615, "type": "socks"})
@@ -195,7 +226,7 @@ class LogJsonTest(unittest.TestCase):
         for number, name in enumerate(["message", "accept", "hostid", "connect",
                                        "block", "temporary_block", "disconnect",
                                        "error", "temporary_error", "io",
-                                       "session_snapshot"]):
+                                       "session_snapshot", "session_close"]):
             self.assertEqual(serialize(mode="event" + str(number))["event"], name)
         self.assertEqual(serialize(mode="event99")["event"], "message")
 

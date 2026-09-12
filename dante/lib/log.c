@@ -1099,6 +1099,10 @@ jsonwanted(const socklog_context_t *context, const socklog_event_t *event)
    wanted = jsonstringsize(wanted, c->verdict);
    wanted = jsonstringsize(wanted, c->protocol);
    wanted = jsonstringsize(wanted, c->command);
+   wanted = jsonstringsize(wanted, c->reason);
+   wanted = jsonstringsize(wanted, c->side);
+   wanted = jsonstringsize(wanted, c->timeout);
+   wanted = jsonstringsize(wanted, c->scope);
    wanted = jsonsizeadd(wanted, c->detail_len);
    if (c->payload_isset)
       wanted = jsonsizeadd(wanted, c->payload_len);
@@ -1258,6 +1262,60 @@ slogeventf(const socklog_event_t *event, const char *format, ...)
    va_start(ap, format);
    va_start(apcopy, format);
    vslogjson(LOG_INFO, event, format, ap, apcopy);
+   va_end(apcopy);
+   va_end(ap);
+   errno = saved_errno;
+}
+/* Session producers select their existing record, then supply native fields
+ * alongside its unchanged human-readable format.  No extra record is emitted.
+ */
+void
+slogconnection(socklog_event_type_t type, const rule_t *rule,
+               const connectionstate_t *state,
+               const iologaddr_t *src, const iologaddr_t *dst,
+               const iologaddr_t *source_proxy, const iologaddr_t *dest_proxy,
+               const socklog_counters_t *counters,
+               const socklog_connection_t *metadata, const char *format, ...)
+{
+   const int saved_errno = errno;
+   socklog_event_t event;
+   socklog_connection_t connection;
+   iologjsonaddr_t addresses[4];
+   va_list ap, apcopy;
+
+#if !SOCKS_IGNORE_SIGNALSAFETY
+   if (sockscf.state.insignal)
+      return;
+#endif
+   va_start(ap, format);
+   va_start(apcopy, format);
+   if (sockscf.logformat == LOGFORMAT_JSON) {
+      memset(&event, 0, sizeof(event));
+      iologevent(&event, &connection, addresses, rule, state,
+                  OPERATION_DISCONNECT, src, dst, source_proxy, dest_proxy,
+                  NULL, 0, saved_errno);
+      event.type = type;
+      event.counters = counters;
+      if (metadata != NULL) {
+         connection.reason = metadata->reason;
+         connection.side = metadata->side;
+         connection.timeout = metadata->timeout;
+         connection.scope = metadata->scope;
+         connection.idle_isset = metadata->idle_isset;
+         connection.idle_us = metadata->idle_us;
+         connection.error_isset = metadata->error_isset;
+         connection.error_code = metadata->error_code;
+         if (metadata->reason != NULL
+         && strcmp(metadata->reason, "blocked") == 0)
+            connection.verdict = verdict2string(VERDICT_BLOCK);
+      }
+      errno = saved_errno;
+      vslogjson(LOG_INFO, &event, format, ap, apcopy);
+   }
+   else {
+      errno = saved_errno;
+      vslog(LOG_INFO, format, ap, apcopy);
+   }
    va_end(apcopy);
    va_end(ap);
    errno = saved_errno;

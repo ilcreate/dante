@@ -1,4 +1,4 @@
-# Log format tests (stages 1–3)
+# Log format tests (stages 1–4)
 
 After configuring and building Dante, run from the source root:
 
@@ -39,7 +39,7 @@ make -C sockd -f Makefile -f tests/logformat-tests.mk check-logjson check-logfor
 ```
 
 `logjson_test.py` parses the standalone serializer's output with Python's JSON
-parser (15 tests). It checks every byte, valid and invalid UTF-8, embedded NUL,
+parser (18 tests). It checks every byte, valid and invalid UTF-8, embedded NUL,
 random binary messages, metadata pressure, capacity boundaries, zero and maximum
 64-bit counters, nested connection objects, authentication fields, payload, and
 `errno`. A standalone sanitizer run is also available:
@@ -109,19 +109,50 @@ failure from rule rejection, while retaining the original human-readable text.
 `error.code` is included only when the legacy call uses errno as the diagnostic
 source; an explicit message does not prove that the current errno belongs to it.
 
-Stages 1–3 are complete. Direct `io_delete()` and `siginfo()` records still use
-`event: message`, including summaries after an asynchronous refused connection;
-structured closure reasons and final counters await stage 4. No duplicate close
-event has been introduced. `signalslog()`, ring-buffer dumps and stack traces
-retain their existing paths until stage 5 and can still emit raw after JSON
-activation. This is not yet the complete JSON logging feature.
+Run the stage 4 native producer and network tests:
+
+```sh
+make -C sockd -f Makefile -f tests/logformat-tests.mk check-logformat-session
+make -C sockd -f Makefile -f tests/logformat-tests.mk check-logformat-session-integration
+```
+
+`logformat_session_test.py` calls the real `io_delete()` and deferred `siginfo()`
+with deterministic monotonic clocks (9 tests). It checks all six close reasons,
+timeout kinds, error provenance, side selection, BIND reversal, UDP socket buckets,
+control counters, rule filtering, unchanged raw messages and event counts.
+TCP_INFO uses the original text, including metadata longer than the legacy
+human message buffer, and obeys each rule’s tcpinfo flag.
+Snapshots must leave the session and UDP target structures unchanged.
+Unknown timestamps are omitted; known zero elapsed times remain present.
+The driver uses local sockets; run it with the same socket permissions as integration tests.
+
+`logformat_session_integration_test.py` checks actual TCP/BIND/UDP traffic,
+known byte and UDP packet counts, zero traffic, IPv4 and IPv6 UDP buckets,
+idle timeout, refused connections, TCP reset, log filtering and raw/JSON close counts.
+Repeated snapshots are checked while TCP/UDP sessions remain usable; a UDP
+association with no target also produces a snapshot. Administrative, blocked
+and other-error close statuses are covered by the C driver: Dante has no
+runtime caller for administrative termination outside the Barefoot build.
+
+Stage 4 introduces `session_close` and `session_snapshot`; section 4.3 of the
+plan defines top-level numeric fields and `scope`. Control/BIND listener
+summaries remain separate existing records. UDP target counts aggregate per
+address-family socket bucket, not per remote destination. The snapshots are
+cumulative values, not traffic deltas.
+
+`signalslog()`, ring-buffer dumps and stack traces retain their existing paths
+until stage 5 and can still emit raw after JSON activation. The full JSON
+logging feature is not yet complete.
 
 Verified on 2026-09-13, macOS arm64: full server and static/dynamic client builds,
-8 configuration tests, 15 serializer tests (also ASan/UBSan), 15 logger tests,
-9 iolog driver tests, 10 network tests (including IPv6, no skips), statistics API
+8 configuration tests, 18 serializer tests (also ASan/UBSan), 15 logger tests,
+9 iolog driver tests, 10 iolog network tests, 9 session producer tests,
+10 session network tests (including IPv6, no skips), statistics API
 and `ci/smoke.py --relay`. `make distdir` includes all new logging test sources.
-Ten iolog raw scenarios were compared byte-for-byte against a driver built
-against `be177da`: all operations, filter matrix, UDP, BIND, payload enabled,
+Thirty-four session raw scenarios were compared byte-for-byte against a stage 3
+driver at fixed time/PID, covering close reasons, TCP/BIND/UDP, snapshots and
+rule filtering and TCP_INFO. All matched. Ten iolog raw scenarios were compared byte-for-byte
+against a driver built against `be177da`: all operations, filter matrix, UDP, BIND, payload enabled,
 iooperation only, empty payload, errno fallback, long payload and allocation
 failure, at fixed time/PID. Earlier stage 2 checks compared ten common logger
 raw scenarios against `f0e827c`. Native hostid and external authentication

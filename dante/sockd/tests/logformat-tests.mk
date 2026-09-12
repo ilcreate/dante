@@ -21,7 +21,7 @@ check-logformat-client: logformat_client_test
 logformat_server_test.o: $(srcdir)/sockd.c
 	$(COMPILE) -Dmain=sockd_program_main -c $(srcdir)/sockd.c -o $@
 
-logformat_logger_test.o: $(srcdir)/tests/logformat_logger_test.c $(srcdir)/../lib/log.c
+logformat_logger_test.o: $(srcdir)/tests/logformat_logger_test.c $(srcdir)/../lib/log.c $(srcdir)/../include/logjson.h
 	$(COMPILE) -UNDEBUG -c $(srcdir)/tests/logformat_logger_test.c -o $@
 
 logformat_logger_test: $(filter-out sockd.o log.o,$(sockd_OBJECTS)) logformat_server_test.o logformat_logger_test.o
@@ -38,7 +38,7 @@ logjson_test: $(srcdir)/tests/logjson_test.c $(srcdir)/../lib/logjson.c $(srcdir
 check-logjson: logjson_test
 	python3 $(srcdir)/tests/logjson_test.py ./logjson_test -v
 
-logformat_iolog_test.o: $(srcdir)/tests/logformat_iolog_test.c $(srcdir)/tests/logformat_logger_test.c $(srcdir)/../lib/log.c
+logformat_iolog_test.o: $(srcdir)/tests/logformat_iolog_test.c $(srcdir)/tests/logformat_logger_test.c $(srcdir)/../lib/log.c $(srcdir)/../include/logjson.h
 	$(COMPILE) -UNDEBUG -c $(srcdir)/tests/logformat_iolog_test.c -o $@
 
 logformat_iolog_test: $(filter-out sockd.o log.o,$(sockd_OBJECTS)) logformat_server_test.o logformat_iolog_test.o
@@ -51,3 +51,17 @@ check-logformat-iolog: logformat_iolog_test
 .PHONY: check-logformat-iolog-integration
 check-logformat-iolog-integration: sockd
 	python3 $(srcdir)/tests/logformat_iolog_integration_test.py ./sockd -v
+
+logformat_session_test.o: $(srcdir)/tests/logformat_session_test.c $(srcdir)/tests/logformat_logger_test.c $(srcdir)/sockd_io.c $(srcdir)/../lib/log.c $(srcdir)/../include/logjson.h
+	$(COMPILE) -UNDEBUG -c $(srcdir)/tests/logformat_session_test.c -o $@
+
+logformat_session_test: $(filter-out sockd.o log.o sockd_io.o,$(sockd_OBJECTS)) logformat_server_test.o logformat_session_test.o
+	$(LINK) $(filter-out sockd.o log.o sockd_io.o,$(sockd_OBJECTS)) logformat_server_test.o logformat_session_test.o $(sockd_LDADD) $(LIBS)
+
+.PHONY: check-logformat-session
+check-logformat-session: logformat_session_test
+	python3 $(srcdir)/tests/logformat_session_test.py ./logformat_session_test -v
+
+.PHONY: check-logformat-session-integration
+check-logformat-session-integration: sockd
+	python3 $(srcdir)/tests/logformat_session_integration_test.py ./sockd -v

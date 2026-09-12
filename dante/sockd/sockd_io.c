@@ -2836,6 +2836,134 @@ getnewios()
    }
 }
 
+/* Native values shared by final session records and informational snapshots. */
+typedef struct {
+   connectionstate_t state;
+   iologaddr_t src, dst, proxy;
+   const iologaddr_t *dstp, *proxyp;
+   socklog_counters_t counters;
+   socklog_connection_t metadata;
+} io_sessionlog_t;
+
+static uint64_t
+io_logelapsed(const struct timeval *now, const struct timeval *then)
+{
+   struct timeval elapsed;
+
+   if (timercmp(now, then, <))
+      return 0;
+   timersub(now, then, &elapsed);
+   return (uint64_t)elapsed.tv_sec * UINT64_C(1000000)
+        + (uint64_t)elapsed.tv_usec;
+}
+
+static void
+io_sessionlog(const sockd_io_t *io, const rule_t *rule,
+              const udptarget_t *udp, const struct timeval *now,
+              const int snapshot, io_sessionlog_t *log)
+{
+   const int control = rule->type != object_srule;
+   const sockd_io_direction_t *client = control ? CONTROLIO(io) : CLIENTIO(io);
+   const sockd_io_direction_t *target = TARGETIO(io);
+   const sockd_io_direction_t *src = client;
+   const sockd_io_direction_t *dst = target;
+   const iocount_t *cr = &client->read, *cw = &client->written;
+   const iocount_t *tr = &target->read, *tw = &target->written;
+   const struct timeval *start = &io->state.time.accepted;
+   const struct timeval *last = &io->lastio;
+   const struct sockaddr_storage *local = &dst->laddr, *peer = &dst->raddr;
+   const sockshost_t *peerhost = &dst->host;
+   const int chained = io->state.proxychain.proxyprotocol != PROXY_DIRECT;
+   int hasdst = !control;
+
+   memset(log, 0, sizeof(*log));
+   log->state = io->state;
+   log->metadata.scope = control ? "control" : "session";
+   if (control) {
+      log->state.command = rule->type == object_crule ? SOCKS_ACCEPT : SOCKS_HOSTID;
+      log->state.protocol = SOCKS_TCP;
+   }
+#if HAVE_UDP_SUPPORT
+   else if (io->state.protocol == SOCKS_UDP) {
+      hasdst = udp != NULL;
+      if (udp != NULL) {
+         /* Each slot counts one address-family socket, not one remote peer. */
+         log->metadata.scope = "udp_target";
+         cr = &udp->client_read;
+         cw = &udp->client_written;
+         tr = &udp->target_read;
+         tw = &udp->target_written;
+         local = &udp->laddr;
+         peer = &udp->raddr;
+         peerhost = &udp->raddrhost;
+         if (snapshot) {
+            start = &udp->firstio;
+            last = &udp->lastio;
+         }
+      }
+   }
+#endif /* HAVE_UDP_SUPPORT */
+   log->counters.present = SOCKLOG_COUNTER_CLIENT_BYTES_READ
+                         | SOCKLOG_COUNTER_CLIENT_BYTES_WRITTEN;
+   if (timerisset(start)) {
+      log->counters.present |= SOCKLOG_COUNTER_DURATION_US;
+      log->counters.duration_us = io_logelapsed(now, start);
+   }
+   log->counters.client_bytes_read = cr->bytes;
+   log->counters.client_bytes_written = cw->bytes;
+   if (!control) {
+      log->counters.present |= SOCKLOG_COUNTER_TARGET_BYTES_READ
+                            | SOCKLOG_COUNTER_TARGET_BYTES_WRITTEN;
+      log->counters.target_bytes_read = tr->bytes;
+      log->counters.target_bytes_written = tw->bytes;
+      if (io->state.protocol == SOCKS_UDP) {
+         log->counters.present |= SOCKLOG_COUNTER_CLIENT_PACKETS_READ
+                               | SOCKLOG_COUNTER_CLIENT_PACKETS_WRITTEN
+                               | SOCKLOG_COUNTER_TARGET_PACKETS_READ
+                               | SOCKLOG_COUNTER_TARGET_PACKETS_WRITTEN;
+         log->counters.client_packets_read = cr->packets;
+         log->counters.client_packets_written = cw->packets;
+         log->counters.target_packets_read = tr->packets;
+         log->counters.target_packets_written = tw->packets;
+      }
+   }
+   if (snapshot) {
+      if (io->state.protocol == SOCKS_TCP && !target->state.isconnected)
+         last = &io->state.time.requestend;
+      if (timerisset(last)) {
+         log->metadata.idle_isset = 1;
+         log->metadata.idle_us = io_logelapsed(now, last);
+      }
+   }
+   init_iologaddr(&log->src, object_sockaddr, &src->laddr,
+                  object_sockshost, &src->host,
+                  control ? &io->cauth : &src->auth,
+                  HAVE_SOCKS_HOSTID ? &io->state.hostid : NULL);
+   if (hasdst) {
+      init_iologaddr(&log->dst, object_sockaddr, local,
+                     chained ? object_sockshost : object_sockaddr,
+                     chained ? (const void *)peerhost : (const void *)peer,
+                     &dst->auth, NULL);
+      log->dstp = &log->dst;
+      if (chained) {
+         init_iologaddr(&log->proxy, object_sockaddr, peer,
+                        object_sockshost, &io->state.proxychain.extaddr,
+                        NULL, NULL);
+         log->proxyp = &log->proxy;
+      }
+   }
+}
+
+#define IO_SESSIONLOG(log, type, rule, ...)                                   \
+do {                                                                          \
+   if (sockscf.logformat == LOGFORMAT_JSON)                                   \
+      slogconnection(type, rule, &(log).state, &(log).src, (log).dstp,          \
+                      NULL, (log).proxyp, &(log).counters,                    \
+                      &(log).metadata, __VA_ARGS__);                          \
+   else                                                                       \
+      slog(LOG_INFO, __VA_ARGS__);                                            \
+} while (/* CONSTCOND */ 0)
+
 /* ARGSUSED */
 static void
 siginfo(sig, si, sc)
@@ -2854,12 +2982,16 @@ siginfo(sig, si, sc)
 
    unsigned long days, hours, minutes, seconds;
    time_t tnow;
+   struct timeval snapshotnow;
    size_t i;
 
    SIGNAL_PROLOGUE(sig, si, errno_s);
 
    seconds = (unsigned long)socks_difftime(time_monotonic(&tnow),
                                            sockscf.stat.boot);
+
+   if (sockscf.logformat == LOGFORMAT_JSON)
+      gettimeofday_monotonic(&snapshotnow);
 
    seconds2days(&seconds, &days, &hours, &minutes);
 
@@ -2901,6 +3033,7 @@ siginfo(sig, si, sc)
    for (i = 0; i < ioc; ++i) {
       const int isreversed = (iov[i].state.command == SOCKS_BINDREPLY ? 1 : 0);
       uint64_t src_written, dst_written;
+      io_sessionlog_t sessionlog;
       sockd_io_direction_t *src, *dst;
       sockshost_t a, b;
       char srcstring[MAX_IOLOGADDR], dststring[MAX_IOLOGADDR],
@@ -2941,6 +3074,7 @@ siginfo(sig, si, sc)
 
       if (iov[i].state.protocol == SOCKS_TCP) {
          size_t src_buffered, dst_buffered;
+         const char *info = NULL;
          char src_bufferinfo[64], dst_bufferinfo[sizeof(src_bufferinfo)],
               tcpinfo[MAXTCPINFOLEN];
          int havesocketinfo;
@@ -3108,7 +3242,6 @@ siginfo(sig, si, sc)
          dst_written = dst->written.bytes;
 
          if (iov[i].srule.log.tcpinfo) {
-            const char *info;
             int fdv[] = { src->s, dst->s };
 
             if ((info = get_tcpinfo(ELEMENTS(fdv), fdv, NULL, 0)) == NULL)
@@ -3128,7 +3261,13 @@ siginfo(sig, si, sc)
          else
             *tcpinfo = NUL;
 
-         slog(LOG_INFO,
+         if (sockscf.logformat == LOGFORMAT_JSON) {
+            io_sessionlog(&iov[i], &iov[i].srule, NULL, &snapshotnow,
+                           1, &sessionlog);
+            sessionlog.state.tcpinfo = info;
+         }
+
+         IO_SESSIONLOG(sessionlog, SOCKLOG_SESSION_SNAPSHOT, &iov[i].srule,
               "%s: %s <-> %s: %s, bytes transferred: "
               "%"PRIu64" (+ %s) "
               "<-> "
@@ -3153,7 +3292,7 @@ siginfo(sig, si, sc)
 #define UDPLOG()                                                               \
 do {                                                                           \
    if (*dststring == NUL) {                                                    \
-      slog(LOG_INFO,                                                           \
+      IO_SESSIONLOG(sessionlog, SOCKLOG_SESSION_SNAPSHOT, &iov[i].srule,       \
            "%s: %s: %s, "                                                      \
            "bytes transferred: %"PRIu64" <-> %"PRIu64", "                      \
            "packets: %"PRIu64" <-> %"PRIu64"",                                 \
@@ -3166,7 +3305,7 @@ do {                                                                           \
            src_packetswritten);                                                \
    }                                                                           \
    else {                                                                      \
-      slog(LOG_INFO,                                                           \
+      IO_SESSIONLOG(sessionlog, SOCKLOG_SESSION_SNAPSHOT, &iov[i].srule,       \
            "%s: %s <-> %s: %s, "                                               \
            "bytes transferred: %"PRIu64" <-> %"PRIu64", "                      \
            "packets: %"PRIu64" <-> %"PRIu64"",                                 \
@@ -3210,6 +3349,9 @@ do {                                                                           \
             dst_written        = dst->written.bytes;
             dst_packetswritten = dst->written.packets;
 
+            if (sockscf.logformat == LOGFORMAT_JSON)
+               io_sessionlog(&iov[i], &iov[i].srule, NULL, &snapshotnow,
+                              1, &sessionlog);
             UDPLOG();
             continue;
          }
@@ -3264,6 +3406,9 @@ do {                                                                           \
                      (long)socks_difftime(tnow, client->firstio.tv_sec),
                      (long)socks_difftime(tnow, client->lastio.tv_sec));
 
+            if (sockscf.logformat == LOGFORMAT_JSON)
+               io_sessionlog(&iov[i], &iov[i].srule, client, &snapshotnow,
+                              1, &sessionlog);
             UDPLOG();
          }
       }
@@ -3616,6 +3761,9 @@ io_delete(mother, io, badfd, status)
    const char *function = "io_delete()";
    const int isreversed = (io->state.command == SOCKS_BINDREPLY ? 1 : 0);
    const int errno_s = errno;
+   const char *side = badfd < 0 ? "session"
+                    : badfd == io->control.s ? "control"
+                    : badfd == CLIENTIO(io)->s ? "client" : "target";
 #if HAVE_GSSAPI
    OM_uint32 major_status, minor_status;
 #endif /* HAVE_GSSAPI */
@@ -3688,6 +3836,9 @@ io_delete(mother, io, badfd, status)
    /* only log the disconnect if the rule says so. */
    for (rulei = 0; rulei < (ssize_t)ELEMENTS(rulev); ++rulei) {
       const rule_t *rule = rulev[rulei];
+      const udptarget_t *logtarget = NULL;
+      const char *info = NULL;
+      io_sessionlog_t sessionlog;
       sockshost_t a, b;
       uint64_t src_read, src_written, dst_read, dst_written;
       size_t bufused;
@@ -3712,7 +3863,6 @@ io_delete(mother, io, badfd, status)
       protocol = io->state.protocol;
 
       if (protocol == SOCKS_TCP && rule->log.tcpinfo) {
-         const char *info;
          int fdv[] = { CLIENTIO(io)->s, EXTERNALIO(io)->s };
 
          if ((info = get_tcpinfo(ELEMENTS(fdv), fdv, NULL, 0)) == NULL)
@@ -3794,6 +3944,7 @@ io_delete(mother, io, badfd, status)
 
 #endif /* BAREFOOTD */
 
+                  logtarget = udptarget;
                   io_syncudp(io, udptarget);
 
                   build_addrstr_dst(sockaddr2sockshost(&io->dst.laddr, &a),
@@ -4033,10 +4184,34 @@ io_delete(mother, io, badfd, status)
                              (long)sessionduration.tv_usec);
       }
 
+      if (sockscf.logformat == LOGFORMAT_JSON) {
+         io_sessionlog(io, rule, logtarget, &tnow, 0, &sessionlog);
+         sessionlog.state.command = command;
+         sessionlog.state.protocol = protocol;
+         sessionlog.state.tcpinfo = info;
+         sessionlog.metadata.side = side;
+         if ((status == IO_IOERROR || status == IO_ERROR) && errno_s != 0) {
+            sessionlog.metadata.error_isset = 1;
+            sessionlog.metadata.error_code = errno_s;
+         }
+         switch (status) {
+            case IO_BLOCK: sessionlog.metadata.reason = "blocked"; break;
+            case IO_IOERROR: sessionlog.metadata.reason = "io_error"; break;
+            case IO_ERROR: sessionlog.metadata.reason = "error"; break;
+            case IO_CLOSE: sessionlog.metadata.reason = "closed"; break;
+            case IO_TIMEOUT: sessionlog.metadata.reason = "timeout"; break;
+            case IO_ADMINTERMINATION:
+               sessionlog.metadata.reason = "administrative";
+               break;
+            default: SERRX(status);
+         }
+      }
+
       errno = errno_s;
       switch (status) {
          case IO_BLOCK:
-            slog(LOG_INFO, "%s: blocked.  %s%s", logmsg, timeinfo, tcpinfo);
+            IO_SESSIONLOG(sessionlog, SOCKLOG_SESSION_CLOSE, rule,
+                 "%s: blocked.  %s%s", logmsg, timeinfo, tcpinfo);
             break;
 
          case IO_IOERROR:
@@ -4046,7 +4221,8 @@ io_delete(mother, io, badfd, status)
             else
                *buf = NUL;
 
-            slog(LOG_INFO, "%s: %s error%s.  %s%s",
+            IO_SESSIONLOG(sessionlog, SOCKLOG_SESSION_CLOSE, rule,
+                 "%s: %s error%s.  %s%s",
                  logmsg,
                  badfd < 0 ? "session"
                         : (badfd == io->dst.s && !isreversed) ?
@@ -4064,7 +4240,8 @@ io_delete(mother, io, badfd, status)
             break;
 
          case IO_CLOSE:
-            slog(LOG_INFO, "%s: %s closed.  %s%s",
+            IO_SESSIONLOG(sessionlog, SOCKLOG_SESSION_CLOSE, rule,
+                 "%s: %s closed.  %s%s",
                 logmsg,
                 badfd < 0 ? "session" : badfd == io->dst.s ?
                 "remote peer" : "local client",
@@ -4080,6 +4257,19 @@ io_delete(mother, io, badfd, status)
             timeuntiltimeout = io_timeuntiltimeout(io, &tnow, &timeouttype, 0);
             SASSERTX(timeuntiltimeout <= 0);
             SASSERTX(timeouttype != TIMEOUT_NOTSET);
+            if (sockscf.logformat == LOGFORMAT_JSON)
+               switch (timeouttype) {
+                  case TIMEOUT_CONNECT:
+                     sessionlog.metadata.timeout = "connect";
+                     break;
+                  case TIMEOUT_IO:
+                     sessionlog.metadata.timeout = "io";
+                     break;
+                  case TIMEOUT_TCP_FIN_WAIT:
+                     sessionlog.metadata.timeout = "tcp_fin_wait";
+                     break;
+                  default: break;
+               }
 
             if (timeouttype == TIMEOUT_TCP_FIN_WAIT) {
                SASSERTX(io->src.state.fin_received
@@ -4092,7 +4282,8 @@ io_delete(mother, io, badfd, status)
 
             }
 
-            slog(LOG_INFO, "%s: %s%s.  %s%s",
+            IO_SESSIONLOG(sessionlog, SOCKLOG_SESSION_CLOSE, rule,
+                 "%s: %s%s.  %s%s",
                  logmsg,
                  timeouttype2string(timeouttype),
                  timeoutinfo == NULL ? "" : timeoutinfo,
@@ -4103,7 +4294,8 @@ io_delete(mother, io, badfd, status)
          }
 
          case IO_ADMINTERMINATION:
-            slog(LOG_INFO, "%s: administrative termination.  %s%s",
+            IO_SESSIONLOG(sessionlog, SOCKLOG_SESSION_CLOSE, rule,
+                 "%s: administrative termination.  %s%s",
                  logmsg, timeinfo, tcpinfo);
             break;
 
@@ -4141,7 +4333,39 @@ io_delete(mother, io, badfd, status)
           * bind as the src for bindreply is the client that connects to the
           * address bound.
           */
-         iolog(&io->cmd.bind.rule,
+         if (sockscf.logformat == LOGFORMAT_JSON) {
+            if (io->cmd.bind.rule.log.disconnect) {
+               build_addrstr_src(HAVE_SOCKS_HOSTID ? &io->state.hostid : NULL,
+                                 dst.peer_isset ? &dst.peer : NULL,
+                                 NULL, NULL,
+                                 dst.local_isset ? &dst.local : NULL,
+                                 &dst.auth, NULL, in, sizeof(in));
+               build_addrstr_dst(src.local_isset ? &src.local : NULL,
+                                 NULL, NULL,
+                                 src.peer_isset ? &src.peer : NULL,
+                                 &src.auth, NULL,
+                                 HAVE_SOCKS_HOSTID ? &io->state.hostid : NULL,
+                                 out, sizeof(out));
+               sessionlog.state.command = SOCKS_BIND;
+               sessionlog.metadata.scope = "bind_listener";
+               sessionlog.counters.present &= SOCKLOG_COUNTER_DURATION_US;
+               slogconnection(SOCKLOG_SESSION_CLOSE, &io->cmd.bind.rule,
+                               &sessionlog.state, &dst, &src, NULL, NULL,
+                               &sessionlog.counters, &sessionlog.metadata,
+                               "%s(%lu): %s/%s ]: %s -> %s%s%s%s",
+                               verdict2string(io->cmd.bind.rule.verdict),
+                               (unsigned long)io->cmd.bind.rule.number,
+                               protocol2string(io->state.protocol),
+                               command2string(io->state.command), in, out,
+                               tcpinfo,
+                               io->cmd.bind.rule.log.tcpinfo
+                               && io->state.tcpinfo != NULL ? "\nTCP_INFO:\n" : "",
+                               io->cmd.bind.rule.log.tcpinfo
+                               && io->state.tcpinfo != NULL ? io->state.tcpinfo : "");
+            }
+         }
+         else
+            iolog(&io->cmd.bind.rule,
                &io->state,
                OPERATION_DISCONNECT,
                &dst,

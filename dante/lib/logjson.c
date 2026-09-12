@@ -156,6 +156,7 @@ event_name(socklog_event_type_t type)
    case SOCKLOG_TEMPORARY_ERROR:  return "temporary_error";
    case SOCKLOG_IO:               return "io";
    case SOCKLOG_SESSION_SNAPSHOT: return "session_snapshot";
+   case SOCKLOG_SESSION_CLOSE:    return "session_close";
    case SOCKLOG_MESSAGE:          return "message";
    }
    return "message";
@@ -338,6 +339,12 @@ connection(jsonwriter_t *writer, const socklog_connection_t *value,
    TEXT(verdict);
    TEXT(protocol);
    TEXT(command);
+   TEXT(reason);
+   TEXT(side);
+   TEXT(timeout);
+   TEXT(scope);
+   if (value->idle_isset)
+      (void)number_field(writer, ",\"idle_us\":", value->idle_us, limit);
    address(writer, ",\"source\":{", value->source, limit);
    address(writer, ",\"destination\":{", value->destination, limit);
    address(writer, ",\"source_proxy\":{", value->source_proxy, limit);

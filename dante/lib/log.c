@@ -47,6 +47,9 @@ static const char rcsid[] =
 
 #include "common.h"
 #include "config_parse.h"
+#if !SOCKS_CLIENT
+#include "logjson.h"
+#endif
 
 #if HAVE_EXECINFO_H && HAVE_BACKTRACE
 #include <execinfo.h>
@@ -103,7 +106,7 @@ syslogfacility(const char *name);
 
 static void
 dolog(const int priority, const char *buf,
-      const size_t logprefixlen, const size_t messagelen);
+      const size_t logprefixlen, const size_t messagelen, const int isjson);
 /*
  * Does the actual logging of the formated logmessage for slog()/vslog().
  *
@@ -113,8 +116,32 @@ dolog(const int priority, const char *buf,
  * is not used if logging to syslog.
  *
  * "messagelen" gives the length of the message that follows after the
- * logprefix.
+ * logprefix.  isjson marks an already serialized object with zero prefix.
  */
+
+/* Complete short writes; retry interrupted writes without recursive logging.
+ * FIFO records have already been bounded to PIPE_BUF before reaching here.
+ * A permanent error may still leave a partial record on other transports.
+ */
+static void
+writejson(const int fd, const char *buf, size_t len)
+{
+   size_t interrupted = 0;
+   ssize_t written;
+
+   while (len != 0) {
+      written = write(fd, buf, len);
+      if (written > 0) {
+         buf += written;
+         len -= (size_t)written;
+         interrupted = 0;
+      }
+      else if (written == -1 && errno == EINTR && interrupted++ < 10)
+         continue;
+      else
+         break;
+   }
+}
 
 static int
 openlogfile(const char *logfile, int *wecreated);
@@ -796,6 +823,181 @@ sockd_reopenlogfiles(log, docloseold)
 }
 #endif /* !SOCKS_CLIENT */
 
+#if !SOCKS_CLIENT
+/* Use the tightest participating FIFO limit for every copy of this event.
+ * Capacity includes NUL, whereas PIPE_BUF bounds only the bytes written.
+ */
+static size_t
+jsonfdlimit(const int fd, const size_t limit)
+{
+   struct stat st;
+   long atomic;
+
+   if (fstat(fd, &st) == -1 || !S_ISFIFO(st.st_mode))
+      return limit;
+
+   atomic = fpathconf(fd, _PC_PIPE_BUF);
+   if (atomic < 0)
+      atomic = _POSIX_PIPE_BUF;
+
+   return (size_t)atomic < limit ? (size_t)atomic + 1 : limit;
+}
+
+static size_t
+jsonlimit(const int priority)
+{
+   size_t i, limit = SOCKS_LOG_JSON_MAX;
+   int haveoutput;
+
+   /* Match dolog's dispatch even during a failed first logfile open:
+    * LOGTYPE_FILE can already be set while filenoc is still zero.
+    */
+   haveoutput = ((sockscf.log.type & LOGTYPE_FILE) && sockscf.log.filenoc != 0)
+             || (priority <= LOG_WARNING
+                 && (sockscf.errlog.type & LOGTYPE_FILE)
+                 && sockscf.errlog.filenoc != 0);
+   if (!sockscf.state.insignal || priority <= LOG_CRIT)
+      haveoutput |= (sockscf.log.type & LOGTYPE_SYSLOG)
+                 || (priority <= LOG_WARNING
+                     && (sockscf.errlog.type & LOGTYPE_SYSLOG));
+
+   if (sockscf.log.type & LOGTYPE_FILE)
+      for (i = 0; i < sockscf.log.filenoc; ++i)
+         limit = jsonfdlimit(sockscf.log.filenov[i], limit);
+
+   if (priority <= LOG_WARNING && (sockscf.errlog.type & LOGTYPE_FILE))
+      for (i = 0; i < sockscf.errlog.filenoc; ++i)
+         limit = jsonfdlimit(sockscf.errlog.filenov[i], limit);
+
+   if (!sockscf.state.inited && priority <= LOG_WARNING && !haveoutput)
+      limit = jsonfdlimit(STDERR_FILENO, limit);
+
+   return limit;
+}
+
+static void
+emitjson(const int priority, const socklog_event_t *event)
+{
+   char local[2048], *buf = local, *allocated = NULL;
+   socklog_event_t bounded = *event;
+   socklog_context_t context;
+   struct timeval now;
+   size_t capacity, wanted, len, programlen;
+
+   now.tv_sec = now.tv_usec = 0;
+   (void)gettimeofday(&now, NULL);
+   context.seconds = now.tv_sec;
+   context.microseconds = now.tv_usec;
+   context.pid = sockscf.state.pid == 0 ? getpid() : sockscf.state.pid;
+   context.level = loglevel2string(priority);
+   context.program = __progname;
+   switch (sockscf.state.type) {
+      case PROC_MOTHER:    context.process = "mother";    break;
+      case PROC_MONITOR:   context.process = "monitor";   break;
+      case PROC_NEGOTIATE: context.process = "negotiate"; break;
+      case PROC_REQUEST:   context.process = "request";   break;
+      case PROC_IO:        context.process = "io";        break;
+      default:            context.process = "unknown";   break;
+   }
+
+   /* Six output bytes per input byte is the worst case for JSON escapes.
+    * Bound the arithmetic as well as both message and output allocations.
+    */
+   programlen = context.program == NULL ? 0 : strlen(context.program);
+   wanted = SOCKS_LOG_JSON_MAX;
+   if (event->message_len < (SOCKS_LOG_JSON_MAX - 1024) / 6
+   && programlen < (SOCKS_LOG_JSON_MAX - 1024) / 6 - event->message_len)
+      wanted = 1024 + 6 * (event->message_len + programlen);
+
+   capacity = MIN(jsonlimit(priority), wanted);
+   if (capacity > sizeof(local)) {
+      if (!sockscf.state.insignal)
+         allocated = malloc(capacity);
+      if (allocated == NULL) {
+         capacity = sizeof(local);
+         bounded.truncated = 1;
+      }
+      else
+         buf = allocated;
+   }
+
+   len = socks_logjson(buf, capacity, &context, &bounded);
+   if (len != 0)
+      dolog(priority, buf, 0, len, 1);
+   free(allocated);
+}
+
+/* Internal typed entry point.  Producers supply their original numeric data;
+ * no fields are recovered from the human-readable message.
+ */
+void
+slogevent(const int priority, const socklog_event_t *event)
+{
+   const int saved_errno = errno;
+
+   if (event == NULL)
+      return;
+
+   if (sockscf.logformat != LOGFORMAT_JSON
+   || (priority == LOG_DEBUG && !sockscf.option.debug)) {
+      slog(priority, "%.*s", (int)MIN(event->message_len, INT_MAX),
+           event->message == NULL ? "" : event->message);
+      errno = saved_errno;
+      return;
+   }
+
+#if !SOCKS_IGNORE_SIGNALSAFETY
+   if (sockscf.state.insignal)
+      return;
+#endif
+
+   emitjson(priority, event);
+   errno = saved_errno;
+}
+
+static void
+vslogjson(const int priority, const char *message, va_list ap, va_list apcopy)
+{
+   const int saved_errno = errno;
+   char local[2048], *buf = local, *allocated = NULL;
+   size_t capacity = sizeof(local);
+   int length;
+   socklog_event_t event;
+
+   memset(&event, 0, sizeof(event));
+   event.type = SOCKLOG_MESSAGE;
+   length = vsnprintf(buf, capacity, message, ap);
+   if (length < 0)
+      return;
+
+   if ((size_t)length >= capacity) {
+      capacity = MIN((size_t)length + 1, SOCKS_LOG_JSON_MAX);
+      if (!sockscf.state.insignal)
+         allocated = malloc(capacity);
+      if (allocated != NULL) {
+         buf = allocated;
+         errno = saved_errno; /* Preserve %m semantics on a second pass. */
+         length = vsnprintf(buf, capacity, message, apcopy);
+         if (length < 0) {
+            free(allocated);
+            return;
+         }
+      }
+      else {
+         capacity = sizeof(local);
+         event.truncated = 1;
+      }
+   }
+
+   event.message = buf;
+   event.message_len = MIN((size_t)length, capacity - 1);
+   if ((size_t)length >= capacity)
+      event.truncated = 1;
+   emitjson(priority, &event);
+   free(allocated);
+}
+#endif /* !SOCKS_CLIENT */
+
 void
 slog(int priority, const char *message, ...)
 {
@@ -915,6 +1117,15 @@ vslog(priority, message, ap, apcopy)
       return;
    }
 
+#if !SOCKS_CLIENT
+   if (sockscf.logformat == LOGFORMAT_JSON) {
+      errno = errno_s;
+      vslogjson(priority, message, ap, apcopy);
+      errno = errno_s;
+      return;
+   }
+#endif
+
    prefixlen = getlogprefix(priority, buf, buflen);
    SASSERTX(prefixlen < buflen);
 
@@ -979,7 +1190,7 @@ vslog(priority, message, ap, apcopy)
    SASSERTX(loglen == strlen(buf) + 1);
 #endif /* DIAGNOSTIC */
 
-   dolog(priority, buf, prefixlen, datalen);
+   dolog(priority, buf, prefixlen, datalen, 0);
 
    free(bigbuf);
    errno = errno_s;
@@ -1032,7 +1243,7 @@ signalslog(priority, msgv)
       return;
    }
 
-   dolog(priority, buf, prefixlen, msglen);
+   dolog(priority, buf, prefixlen, msglen, 0);
 
 #if HAVE_LIVEDEBUG /* always save to ring buffer too. */
    if (!dont_add_to_rb)
@@ -1044,11 +1255,12 @@ signalslog(priority, msgv)
 
 
 static void
-dolog(priority, buf, prefixlen, messagelen)
+dolog(priority, buf, prefixlen, messagelen, isjson)
    const int priority;
    const char *buf;
    const size_t prefixlen;
    const size_t messagelen;
+   const int isjson;
 {
    int needlock = 0, logged = 0;
 
@@ -1065,7 +1277,11 @@ dolog(priority, buf, prefixlen, messagelen)
              * however.
              */
             if (!sockscf.state.insignal || priority <= LOG_CRIT) {
-               syslog(priority | sockscf.errlog.facility,
+               if (isjson)
+                  syslog(priority | sockscf.errlog.facility,
+                         "%.*s", (int)(messagelen - 1), buf);
+               else
+                  syslog(priority | sockscf.errlog.facility,
                       "%s: %s", loglevel2string(priority), &buf[prefixlen]);
 
                logged = 1;
@@ -1075,7 +1291,11 @@ dolog(priority, buf, prefixlen, messagelen)
 
       if (sockscf.log.type & LOGTYPE_SYSLOG) {
          if (!sockscf.state.insignal || priority <= LOG_CRIT) {
-            syslog(priority | sockscf.log.facility,
+            if (isjson)
+               syslog(priority | sockscf.log.facility,
+                      "%.*s", (int)(messagelen - 1), buf);
+            else
+               syslog(priority | sockscf.log.facility,
                    "%s: %s", loglevel2string(priority), &buf[prefixlen]);
 
             logged = 1;
@@ -1140,9 +1360,13 @@ dolog(priority, buf, prefixlen, messagelen)
          size_t i;
 
          for (i = 0; i < sockscf.errlog.filenoc; ++i) {
-            while (write(sockscf.errlog.filenov[i], buf, prefixlen + messagelen)
-            == -1 && errno == EINTR)
-               ;
+            if (isjson)
+               writejson(sockscf.errlog.filenov[i], buf, messagelen);
+            else {
+               while (write(sockscf.errlog.filenov[i], buf,
+                            prefixlen + messagelen) == -1 && errno == EINTR)
+                  ;
+            }
 
             logged = 1;
          }
@@ -1156,10 +1380,15 @@ dolog(priority, buf, prefixlen, messagelen)
       for (i = 0; i < sockscf.log.filenoc; ++i) {
          size_t retries = 0;
 
-         while (write(sockscf.log.filenov[i], buf, prefixlen + messagelen) == -1
-         && errno     == EINTR
-         && retries++ <  10)
-            ;
+         if (isjson)
+            writejson(sockscf.log.filenov[i], buf, messagelen);
+         else {
+            while (write(sockscf.log.filenov[i], buf,
+                         prefixlen + messagelen) == -1
+            && errno     == EINTR
+            && retries++ <  10)
+               ;
+         }
 
          logged = 1;
       }
@@ -1181,7 +1410,10 @@ dolog(priority, buf, prefixlen, messagelen)
 
 #else /* server */
 
-         (void)write(fileno(stderr), buf, prefixlen + messagelen);
+         if (isjson)
+            writejson(fileno(stderr), buf, messagelen);
+         else
+            (void)write(fileno(stderr), buf, prefixlen + messagelen);
 
 #endif /* server */
       }

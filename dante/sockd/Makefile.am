@@ -5,7 +5,7 @@ sockd_SOURCES = ../lib/addressmatch.c ../lib/authneg.c ../lib/broken.c	\
    ../lib/fmt.c ../lib/fmt_customer.c ../lib/fmt_protocol.c		\
    ../lib/gssapi.c ../lib/hostcache.c ../lib/hostid.c			\
    ../lib/httpproxy.c ../lib/hw.c ../lib/iface.c ../lib/io.c		\
-   ../lib/iobuf.c ../lib/ipv6.c ../lib/krb5.c ../lib/log.c		\
+   ../lib/iobuf.c ../lib/ipv6.c ../lib/krb5.c ../lib/log.c ../lib/logjson.c		\
    ../lib/method.c ../lib/parse_util.c ../lib/protocol.c		\
    ../lib/serr.c ../lib/showconfig.c ../lib/sockaddr.c			\
    ../lib/socket.c ../lib/socketopt.c ../lib/sockopt.c			\
@@ -34,6 +34,11 @@ EXTRA_sockd_SOURCES = ../libscompat/getifaddrs.c        \
 #libscompat - files only used by server
 EXTRA_sockd_SOURCES += ../libscompat/daemon.c ../libscompat/seteuid.c   \
    ../libscompat/sockatmark.c
+
+EXTRA_DIST = tests/README.logformat.md tests/logformat-tests.mk \
+   tests/logformat_config_test.py tests/logformat_lifecycle_test.c \
+   tests/logformat_client_test.c tests/logformat_logger_test.c \
+   tests/logformat_logger_test.py tests/logjson_test.c tests/logjson_test.py
 
 #use preloading if enabled and possible
 if SERVER_INTERPOSITION

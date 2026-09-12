@@ -17,3 +17,23 @@ logformat_client_test: $(srcdir)/tests/logformat_client_test.c ../lib/.libs/libs
 .PHONY: check-logformat-client
 check-logformat-client: logformat_client_test
 	python3 $(srcdir)/tests/logformat_config_test.py ./sockd --client-binary ./logformat_client_test -v LogformatConfigTest.test_client_config_rejects_logformat
+
+logformat_server_test.o: $(srcdir)/sockd.c
+	$(COMPILE) -Dmain=sockd_program_main -c $(srcdir)/sockd.c -o $@
+
+logformat_logger_test.o: $(srcdir)/tests/logformat_logger_test.c $(srcdir)/../lib/log.c
+	$(COMPILE) -UNDEBUG -c $(srcdir)/tests/logformat_logger_test.c -o $@
+
+logformat_logger_test: $(filter-out sockd.o log.o,$(sockd_OBJECTS)) logformat_server_test.o logformat_logger_test.o
+	$(LINK) $(filter-out sockd.o log.o,$(sockd_OBJECTS)) logformat_server_test.o logformat_logger_test.o $(sockd_LDADD) $(LIBS)
+
+.PHONY: check-logformat-logger
+check-logformat-logger: logformat_logger_test
+	python3 $(srcdir)/tests/logformat_logger_test.py ./logformat_logger_test -v
+
+logjson_test: $(srcdir)/tests/logjson_test.c $(srcdir)/../lib/logjson.c $(srcdir)/../include/logjson.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -UNDEBUG -I$(srcdir)/../include -o $@ $(srcdir)/tests/logjson_test.c $(srcdir)/../lib/logjson.c
+
+.PHONY: check-logjson
+check-logjson: logjson_test
+	python3 $(srcdir)/tests/logjson_test.py ./logjson_test -v

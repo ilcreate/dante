@@ -2,6 +2,7 @@
 """Check logformat parsing and reloads using a built sockd binary."""
 
 import argparse
+import json
 import os
 from pathlib import Path
 import pwd
@@ -54,6 +55,19 @@ socks pass {
                 result = self.verify(directive + self.globals + self.rules)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn("logformat: " + expected, result.stderr)
+
+    def test_json_diagnostics_after_activation(self):
+        result = self.verify("logformat: json\n" + self.globals + self.rules)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        lines = [line for line in result.stderr.splitlines() if "logformat: json" in line]
+        self.assertTrue(lines, result.stderr)
+        for line in lines:
+            event = json.loads(line)
+            self.assertEqual(event["event"], "message")
+            self.assertEqual(event["schema_version"], 1)
+            self.assertEqual(event["process"], "mother")
+            self.assertRegex(event["timestamp"], r"^\d+\.\d{6}$")
+            self.assertFalse(event["truncated"])
 
     def test_invalid_values(self):
         for value in ("xml", "JSON", "0", "", "json raw"):

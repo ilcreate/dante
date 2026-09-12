@@ -120,7 +120,7 @@ am__sockd_SOURCES_DIST = ../lib/addressmatch.c ../lib/authneg.c \
 	../lib/fmt_protocol.c ../lib/gssapi.c ../lib/hostcache.c \
 	../lib/hostid.c ../lib/httpproxy.c ../lib/hw.c ../lib/iface.c \
 	../lib/io.c ../lib/iobuf.c ../lib/ipv6.c ../lib/krb5.c \
-	../lib/log.c ../lib/method.c ../lib/parse_util.c \
+	../lib/log.c ../lib/logjson.c ../lib/method.c ../lib/parse_util.c \
 	../lib/protocol.c ../lib/serr.c ../lib/showconfig.c \
 	../lib/sockaddr.c ../lib/socket.c ../lib/socketopt.c \
 	../lib/sockopt.c ../lib/tcpinfo.c ../lib/time.c \
@@ -145,7 +145,7 @@ am_sockd_OBJECTS = addressmatch.$(OBJEXT) authneg.$(OBJEXT) \
 	fmt_protocol.$(OBJEXT) gssapi.$(OBJEXT) hostcache.$(OBJEXT) \
 	hostid.$(OBJEXT) httpproxy.$(OBJEXT) hw.$(OBJEXT) \
 	iface.$(OBJEXT) io.$(OBJEXT) iobuf.$(OBJEXT) ipv6.$(OBJEXT) \
-	krb5.$(OBJEXT) log.$(OBJEXT) method.$(OBJEXT) \
+	krb5.$(OBJEXT) log.$(OBJEXT) logjson.$(OBJEXT) method.$(OBJEXT) \
 	parse_util.$(OBJEXT) protocol.$(OBJEXT) serr.$(OBJEXT) \
 	showconfig.$(OBJEXT) sockaddr.$(OBJEXT) socket.$(OBJEXT) \
 	socketopt.$(OBJEXT) sockopt.$(OBJEXT) tcpinfo.$(OBJEXT) \
@@ -211,7 +211,7 @@ am__depfiles_remade = ./$(DEPDIR)/accesscheck.Po \
 	./$(DEPDIR)/interposition.Po ./$(DEPDIR)/io.Po \
 	./$(DEPDIR)/iobuf.Po ./$(DEPDIR)/ipv6.Po ./$(DEPDIR)/krb5.Po \
 	./$(DEPDIR)/ldap.Po ./$(DEPDIR)/ldap_key.Po \
-	./$(DEPDIR)/ldap_util.Po ./$(DEPDIR)/log.Po \
+	./$(DEPDIR)/ldap_util.Po ./$(DEPDIR)/log.Po ./$(DEPDIR)/logjson.Po \
 	./$(DEPDIR)/math.Po ./$(DEPDIR)/memmove.Po \
 	./$(DEPDIR)/method.Po ./$(DEPDIR)/method_gssapi.Po \
 	./$(DEPDIR)/method_uname.Po ./$(DEPDIR)/monitor.Po \
@@ -445,7 +445,7 @@ sockd_SOURCES = ../lib/addressmatch.c ../lib/authneg.c ../lib/broken.c \
 	../lib/fmt.c ../lib/fmt_customer.c ../lib/fmt_protocol.c \
 	../lib/gssapi.c ../lib/hostcache.c ../lib/hostid.c \
 	../lib/httpproxy.c ../lib/hw.c ../lib/iface.c ../lib/io.c \
-	../lib/iobuf.c ../lib/ipv6.c ../lib/krb5.c ../lib/log.c \
+	../lib/iobuf.c ../lib/ipv6.c ../lib/krb5.c ../lib/log.c ../lib/logjson.c \
 	../lib/method.c ../lib/parse_util.c ../lib/protocol.c \
 	../lib/serr.c ../lib/showconfig.c ../lib/sockaddr.c \
 	../lib/socket.c ../lib/socketopt.c ../lib/sockopt.c \
@@ -476,6 +476,11 @@ EXTRA_sockd_SOURCES = ../libscompat/getifaddrs.c \
 
 #use preloading if enabled and possible
 @SERVER_INTERPOSITION_TRUE@SERVDL = 1
+EXTRA_DIST = tests/README.logformat.md tests/logformat-tests.mk \
+   tests/logformat_config_test.py tests/logformat_lifecycle_test.c \
+   tests/logformat_client_test.c tests/logformat_logger_test.c \
+   tests/logformat_logger_test.py tests/logjson_test.c tests/logjson_test.py
+
 sockd_LDADD = @SOCKDCOMPAT@ @SOCKDDEPS@ @LIBSCOMPAT@
 sockd_DEPENDENCIES = Makefile.am _reconf @SOCKDCOMPAT@ $(am__append_2)
 INCLUDES = -I$(top_srcdir)/include -I$(top_srcdir)/libscompat \
@@ -627,6 +632,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ldap_key.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ldap_util.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/log.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/logjson.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/math.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/memmove.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/method.Po@am__quote@ # am--include-marker
@@ -1030,6 +1036,20 @@ log.obj: ../lib/log.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='../lib/log.c' object='log.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o log.obj `if test -f '../lib/log.c'; then $(CYGPATH_W) '../lib/log.c'; else $(CYGPATH_W) '$(srcdir)/../lib/log.c'; fi`
+
+logjson.o: ../lib/logjson.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT logjson.o -MD -MP -MF $(DEPDIR)/logjson.Tpo -c -o logjson.o `test -f '../lib/logjson.c' || echo '$(srcdir)/'`../lib/logjson.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/logjson.Tpo $(DEPDIR)/logjson.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='../lib/logjson.c' object='logjson.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o logjson.o `test -f '../lib/logjson.c' || echo '$(srcdir)/'`../lib/logjson.c
+
+logjson.obj: ../lib/logjson.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT logjson.obj -MD -MP -MF $(DEPDIR)/logjson.Tpo -c -o logjson.obj `if test -f '../lib/logjson.c'; then $(CYGPATH_W) '../lib/logjson.c'; else $(CYGPATH_W) '$(srcdir)/../lib/logjson.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/logjson.Tpo $(DEPDIR)/logjson.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='../lib/logjson.c' object='logjson.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o logjson.obj `if test -f '../lib/logjson.c'; then $(CYGPATH_W) '../lib/logjson.c'; else $(CYGPATH_W) '$(srcdir)/../lib/logjson.c'; fi`
 
 method.o: ../lib/method.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT method.o -MD -MP -MF $(DEPDIR)/method.Tpo -c -o method.o `test -f '../lib/method.c' || echo '$(srcdir)/'`../lib/method.c
@@ -1645,6 +1665,7 @@ distclean: distclean-am
 	-rm -f ./$(DEPDIR)/ldap_key.Po
 	-rm -f ./$(DEPDIR)/ldap_util.Po
 	-rm -f ./$(DEPDIR)/log.Po
+	-rm -f ./$(DEPDIR)/logjson.Po
 	-rm -f ./$(DEPDIR)/math.Po
 	-rm -f ./$(DEPDIR)/memmove.Po
 	-rm -f ./$(DEPDIR)/method.Po
@@ -1790,6 +1811,7 @@ maintainer-clean: maintainer-clean-am
 	-rm -f ./$(DEPDIR)/ldap_key.Po
 	-rm -f ./$(DEPDIR)/ldap_util.Po
 	-rm -f ./$(DEPDIR)/log.Po
+	-rm -f ./$(DEPDIR)/logjson.Po
 	-rm -f ./$(DEPDIR)/math.Po
 	-rm -f ./$(DEPDIR)/memmove.Po
 	-rm -f ./$(DEPDIR)/method.Po

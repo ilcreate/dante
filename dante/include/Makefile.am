@@ -1,5 +1,5 @@
 noinst_HEADERS = common.h config.h errorsymbols.h fmt.h interposition.h	\
-   osdep.h qos.h redefac.h sockd.h socks.h socks_gssapi.h socks_krb5.h \
+   logjson.h osdep.h qos.h redefac.h sockd.h socks.h socks_gssapi.h socks_krb5.h \
    symbols.h tostring.h upnp.h yacconfig.h monitor.h
 
 EXTRA_DIST = redefgen.sh symbols_common.txt symbols_darwin.txt  \

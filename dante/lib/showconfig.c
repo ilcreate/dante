@@ -330,6 +330,9 @@ showconfig(sockscf)
    slog(LOG_DEBUG, "connect udp sockets to destination: %s",
         sockscf->udpconnectdst ? "yes" : "no");
 
+   slog(LOG_DEBUG, "logformat: %s",
+        sockscf->logformat == LOGFORMAT_JSON ? "json" : "raw");
+
    showlogspecial(&sockscf->internal.log, INTERNALIF);
    showlogspecial(&sockscf->external.log, EXTERNALIF);
 

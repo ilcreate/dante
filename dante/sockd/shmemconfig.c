@@ -831,6 +831,7 @@ do {                                                                           \
     */
 
    EQCHECK(a, b, initial);
+   EQCHECK(a, b, logformat);
 
    EQCHECK_PTR(a,
                b,

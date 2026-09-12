@@ -118,6 +118,7 @@ SOCKETLEVEL    (ip|socket|tcp|udp)
 %x start_line
 %x start_log
 %x start_loglevel
+%x start_logformat
 %x start_logoutput
 %x start_logtype
 %x start_errorsymbol
@@ -622,6 +623,12 @@ cpu {
    return BSDAUTHSTYLENAME;
 }
 
+<start_logformat>[^: \t\r\n#{}]+ {
+   BEGIN(0);
+   yylval.string = yytext;
+   return LOGFORMAT_VALUE;
+}
+
 <start_logoutput>[^: \t\n]+ {
    yylval.string = yytext;
    return LOGFILE;
@@ -981,6 +988,13 @@ errorlog {
 
    yylval.string = yytext;
    return ERRORLOG;
+}
+
+logformat {
+   BEGIN(start_logformat);
+
+   yylval.string = yytext;
+   return LOGFORMAT;
 }
 
 logoutput {

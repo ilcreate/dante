@@ -2146,6 +2146,11 @@ typedef struct {
 } oldshmeminfo_t;
 
 
+typedef enum {
+   LOGFORMAT_RAW = 0,
+   LOGFORMAT_JSON
+} logformat_t;
+
 /*
  * Make sure to keep in sync with resetconfig().
  *
@@ -2245,6 +2250,7 @@ struct config {
 
    logtype_t                  errlog;               /* for errors only.       */
    logtype_t                  log;                  /* where to log.          */
+   logformat_t                logformat;            /* active server format.  */
    int                        loglock;              /* lockfile for logging.  */
 
    option_t                   option;               /*

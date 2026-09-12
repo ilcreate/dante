@@ -723,6 +723,8 @@ resetconfig(config, exiting)
 
    /*
     * log, errlog; handled specially when parsing.
+    * logformat stays active during reload until a valid directive is read.
+    * A successful parse without the directive installs the raw default.
     */
 
    /*

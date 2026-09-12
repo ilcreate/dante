@@ -292,7 +292,9 @@ extern int socks_yydebug;
     VERDICT_BLOCK = 493,           /* VERDICT_BLOCK  */
     VERDICT_PASS = 494,            /* VERDICT_PASS  */
     YES = 495,                     /* YES  */
-    NO = 496                       /* NO  */
+    NO = 496,                      /* NO  */
+    LOGFORMAT = 497,               /* LOGFORMAT  */
+    LOGFORMAT_VALUE = 498          /* LOGFORMAT_VALUE  */
   };
   typedef enum yytokentype yytoken_kind_t;
 #endif
@@ -540,12 +542,14 @@ extern int socks_yydebug;
 #define VERDICT_PASS 494
 #define YES 495
 #define NO 496
+#define LOGFORMAT 497
+#define LOGFORMAT_VALUE 498
 
 /* Value type.  */
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
-#line 417 "config_parse.y"
+#line 418 "config_parse.y"
 
    struct {
       uid_t   uid;
@@ -566,7 +570,7 @@ union YYSTYPE
    int        method;
    long long  number;
 
-#line 570 "config_parse.h"
+#line 574 "config_parse.h"
 
 };
 typedef union YYSTYPE YYSTYPE;

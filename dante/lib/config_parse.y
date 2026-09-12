@@ -199,6 +199,7 @@ unsigned char  parsingconfig;   /* currently parsing config?          */
 
 #if !SOCKS_CLIENT
 static logtype_t       old_log,           old_errlog;
+static unsigned char   logformat_seen;  /* reset for each config parse.       */
 #endif /* !SOCKS_CLIENT */
 
 static int             failed_to_add_log, failed_to_add_errlog;
@@ -486,7 +487,7 @@ do {                                                                           \
 %type   <string> ldapfilter ldapfilter_ad ldapfilter_hex ldapfilter_ad_hex
 %type   <string> libwrap_hosts_access
 %type   <string> libwrapfiles libwrap_allowfile libwrap_denyfile
-%type   <string> logoutput errorlog
+%type   <string> logoutput errorlog logformat
 %type   <string> internal_if_logoption external_if_logoption
 %type   <string> logspecial loglevel errors errorobject
 %type   <string> lserver lgroup lgroup_hex lgroup_hex_all
@@ -640,6 +641,7 @@ do {                                                                           \
 %token <string> USER GROUP
 %token <string> VERDICT_BLOCK VERDICT_PASS
 %token <string> YES NO
+%token <string> LOGFORMAT LOGFORMAT_VALUE
 
 
 %%
@@ -692,6 +694,7 @@ serveroption:  childstate
    |           libwrap_hosts_access
    |           libwrapfiles
    |           logoutput
+   |           logformat
    |           realm
    |           resolveprotocol
    |           srchost
@@ -1129,6 +1132,23 @@ global_routeoption: GLOBALROUTEOPTION MAXFAIL ':' NUMBER {
                   (long)$4);
 
       sockscf.routeoptions.badexpire = $4;
+   }
+   ;
+
+logformat: LOGFORMAT ':' LOGFORMAT_VALUE {
+#if !SOCKS_CLIENT
+      if (logformat_seen)
+         yyerrorx("duplicate logformat directive");
+
+      if (strcmp($3, "raw") == 0)
+         sockscf.logformat = LOGFORMAT_RAW;
+      else if (strcmp($3, "json") == 0)
+         sockscf.logformat = LOGFORMAT_JSON;
+      else
+         yyerrorx("invalid logformat \"%s\": expected raw or json", $3);
+
+      logformat_seen = 1;
+#endif /* !SOCKS_CLIENT */
    }
    ;
 
@@ -3519,6 +3539,7 @@ parseconfig(filename)
        */
 
 #if !SOCKS_CLIENT
+      logformat_seen       = 0;
       old_log              = sockscf.log;
       old_errlog           = sockscf.errlog;
 #endif /* !SOCKS_CLIENT */
@@ -3538,7 +3559,13 @@ parseconfig(filename)
       socks_markasnative("*");
 #endif /* SOCKSLIBRARY_DYNAMIC */
 
-      yyparse();
+      if (yyparse() == 0) {
+#if !SOCKS_CLIENT
+         /* Keep the previous format until the new config has been parsed. */
+         if (!logformat_seen)
+            sockscf.logformat = LOGFORMAT_RAW;
+#endif /* !SOCKS_CLIENT */
+      }
 
 #if SOCKSLIBRARY_DYNAMIC
       socks_markasnormal("*");

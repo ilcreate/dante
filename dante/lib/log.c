@@ -1028,7 +1028,11 @@ jsonfdlimit(const int fd, const size_t limit)
    if (fstat(fd, &st) == -1 || !S_ISFIFO(st.st_mode))
       return limit;
 
-   atomic = fpathconf(fd, _PC_PIPE_BUF);
+   /* fpathconf is not required to be async-signal-safe.  The POSIX minimum
+    * is conservative for every pipe, and fstat above is signal-safe.
+    */
+   atomic = sockscf.state.insignal ? _POSIX_PIPE_BUF
+                                  : fpathconf(fd, _PC_PIPE_BUF);
    if (atomic < 0)
       atomic = _POSIX_PIPE_BUF;
 
@@ -1172,6 +1176,62 @@ emitjson(const int priority, const socklog_event_t *event)
    if (len != 0)
       dolog(priority, buf, 0, len, 1);
    free(allocated);
+}
+
+/* Signal messages (including ring dumps) use fixed automatic storage.  Scan
+ * only as much input as can be retained; never allocate, format with stdio,
+ * or issue recursive diagnostics if serialization or a write fails.
+ */
+static void
+signaljson(const int priority, const char *msgv[])
+{
+   char message[16384], output[16384];
+   socklog_event_t event = { 0 };
+   socklog_context_t context;
+   struct timeval now;
+   size_t i, j, used = 0, len;
+
+   for (i = 0; msgv[i] != NULL; ++i) {
+      for (j = 0; msgv[i][j] != NUL; ++j) {
+         if (used == sizeof(message)) {
+            event.truncated = 1;
+            break;
+         }
+         message[used++] = msgv[i][j];
+      }
+      if (event.truncated)
+         break;
+   }
+   event.type = SOCKLOG_MESSAGE;
+   event.message = message;
+   event.message_len = used;
+
+   now.tv_sec = now.tv_usec = 0;
+   (void)gettimeofday(&now, NULL);
+   context.seconds = now.tv_sec;
+   context.microseconds = now.tv_usec;
+   context.pid = sockscf.state.pid == 0 ? getpid() : sockscf.state.pid;
+   context.level = loglevel2string(priority);
+   context.program = __progname;
+   switch (sockscf.state.type) {
+      case PROC_MOTHER:    context.process = "mother";    break;
+      case PROC_MONITOR:   context.process = "monitor";   break;
+      case PROC_NEGOTIATE: context.process = "negotiate"; break;
+      case PROC_REQUEST:   context.process = "request";   break;
+      case PROC_IO:        context.process = "io";        break;
+      default:            context.process = "unknown";   break;
+   }
+
+   len = socks_logjson(output, MIN(sizeof(output), jsonlimit(priority)),
+                       &context, &event);
+   if (len == 0)
+      return;
+   if (priority != LOG_DEBUG || sockscf.option.debug)
+      dolog(priority, output, 0, len, 1);
+#if HAVE_LIVEDEBUG
+   if (!dont_add_to_rb)
+      socks_addtorb(output, len + 1);
+#endif
 }
 
 /* Internal typed entry point.  Producers supply their original numeric data;
@@ -1536,10 +1596,18 @@ signalslog(priority, msgv)
 
 #endif /* !HAVE_LIVEDEBUG */
 
-   prefixlen = bufused = getlogprefix(priority, buf, sizeof(buf));
-
    if (msgv == NULL)
       return;
+
+#if !SOCKS_CLIENT
+   if (sockscf.logformat == LOGFORMAT_JSON) {
+      signaljson(priority, msgv);
+      errno = errno_s;
+      return;
+   }
+#endif
+
+   prefixlen = bufused = getlogprefix(priority, buf, sizeof(buf));
 
    for (i = 0; msgv[i] != NULL; ++i) {
       msglen = MIN(strlen(msgv[i]), sizeof(buf) - bufused - 1);
@@ -1735,7 +1803,7 @@ dolog(priority, buf, prefixlen, messagelen, isjson)
 #else /* server */
 
          if (isjson)
-            writejson(fileno(stderr), buf, messagelen);
+            writejson(STDERR_FILENO, buf, messagelen);
          else
             (void)write(fileno(stderr), buf, prefixlen + messagelen);
 
@@ -1990,16 +2058,31 @@ void
 slogstack(void)
 {
 #if HAVE_BACKTRACE
+   const int saved_errno = errno;
    const char *function = "slogstack()";
    void *array[20];
    size_t i, size;
    char **strings;
+
+#if !SOCKS_CLIENT
+   if (sockscf.logformat == LOGFORMAT_JSON && sockscf.state.insignal) {
+      const char *msgv[] = {
+         "slogstack(): stack trace unavailable in signal context", NULL
+      };
+
+      /* Neither backtrace nor backtrace_symbols is signal-safe. */
+      signalslog(LOG_INFO, msgv);
+      errno = saved_errno;
+      return;
+   }
+#endif
 
    size    = backtrace(array, (int)ELEMENTS(array));
    strings = backtrace_symbols(array, size);
 
    if (strings == NULL)  {
       swarn("%s: strings = NULL", function);
+      errno = saved_errno;
       return;
    }
 
@@ -2008,6 +2091,7 @@ slogstack(void)
            function, (unsigned long)i, strings[i]);
 
    free(strings);
+   errno = saved_errno;
 #endif /* HAVE_BACKTRACE */
 }
 

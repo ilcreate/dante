@@ -1,4 +1,4 @@
-# Log format tests (stages 1–4)
+# Log format tests (stages 1–5)
 
 After configuring and building Dante, run from the source root:
 
@@ -140,15 +140,55 @@ summaries remain separate existing records. UDP target counts aggregate per
 address-family socket bucket, not per remote destination. The snapshots are
 cumulative values, not traffic deltas.
 
-`signalslog()`, ring-buffer dumps and stack traces retain their existing paths
-until stage 5 and can still emit raw after JSON activation. The full JSON
-logging feature is not yet complete.
+Run the stage 5 special logger, fatal diagnostic and runtime tests:
+
+```sh
+make -C sockd -f Makefile -f tests/logformat-tests.mk check-logformat-special check-logformat-diagnostic
+make -C sockd -f Makefile -f tests/logformat-tests.mk check-logformat-special-integration
+```
+
+The special driver exercises real `log.c` paths (12 tests), including actual
+SIGUSR1, allocation/stdio/backtrace guards, debug/ring retention and repeated
+flush, stack output, escaping/truncation, pipe limits, syslog routing, errno,
+short writes and permanent write failure without recursive logging. Its
+translation unit enables ring code even in a normal build. Stack assertions
+require nonempty output when backtrace is available; otherwise that case skips.
+The diagnostic driver runs public warning/fatal helpers and a real flex input
+failure in subprocesses (4 tests), checking output and exit status.
+
+Runtime tests validate every line after the first JSON record, including
+startup, SIGUSR1, JSON-preserving SIGHUP, SIGTERM, parser errors and unexpected
+SIGSEGV. Temporary server processes disable core dumps and are cleaned up.
+To exercise the fourth case (a real fatal ring-buffer flush), build a separate
+source copy with `--enable-livedebug` and run:
+
+```sh
+python3 sockd/tests/logformat_special_integration_test.py sockd/sockd --livedebug -v
+```
+
+Without `--livedebug`, the ring runtime case explicitly skips; the other three
+cases run in both builds. The ordinary build has no runtime ring buffer.
+
+Signal messages and ring dumps use `event: message`, fixed 16 KiB input/output
+buffers and explicit truncation. In signal context FIFO records use the
+conservative POSIX pipe minimum without calling fpathconf. Large ring dumps
+retain the initial part; newest entries may be omitted. Ordinary stack frames
+are JSON; in signal context a message reports that backtrace is unavailable.
+The existing critical-only signal syslog exception is preserved. See section
+4.5 of the plan for the full contract and limits.
+
+Stages 1–5 are complete. Stage 6 remains: cross-platform CI, the final live
+reload/transport matrix, user documentation and overhead measurements.
 
 Verified on 2026-09-13, macOS arm64: full server and static/dynamic client builds,
 8 configuration tests, 18 serializer tests (also ASan/UBSan), 15 logger tests,
 9 iolog driver tests, 10 iolog network tests, 9 session producer tests,
 10 session network tests (including IPv6, no skips), statistics API
-and `ci/smoke.py --relay`. `make distdir` includes all new logging test sources.
+and `ci/smoke.py --relay`. Stage 5 adds 12 special logger tests (also ASan/UBSan
+for the actual log.c test translation unit), 4 diagnostic tests and 4 runtime
+scenarios, including a real `--enable-livedebug` server. Twenty-two raw
+comparisons against `cfe6d18` matched stdout/stderr and status exactly.
+`make distdir` includes all new logging test sources.
 Thirty-four session raw scenarios were compared byte-for-byte against a stage 3
 driver at fixed time/PID, covering close reasons, TCP/BIND/UDP, snapshots and
 rule filtering and TCP_INFO. All matched. Ten iolog raw scenarios were compared byte-for-byte

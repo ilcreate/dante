@@ -5300,8 +5300,10 @@ send_response(int s, const response_t *response);
 
 #endif /* !HAVE_NEGOTIATE_PHASE */
 
-#if DIAGNOSTIC
+/* Also called by DEBUG builds enabled through --enable-livedebug. */
 void doconfigtest(void);
+
+#if DIAGNOSTIC
 void shmemcheck(void);
 /*
  * Internal testing functions.

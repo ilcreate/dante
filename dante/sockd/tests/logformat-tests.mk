@@ -65,3 +65,27 @@ check-logformat-session: logformat_session_test
 .PHONY: check-logformat-session-integration
 check-logformat-session-integration: sockd
 	python3 $(srcdir)/tests/logformat_session_integration_test.py ./sockd -v
+
+logformat_diagnostic_test.o: $(srcdir)/tests/logformat_diagnostic_test.c
+	$(COMPILE) -UNDEBUG -c $(srcdir)/tests/logformat_diagnostic_test.c -o $@
+
+logformat_diagnostic_test: $(filter-out sockd.o,$(sockd_OBJECTS)) logformat_server_test.o logformat_diagnostic_test.o
+	$(LINK) $(filter-out sockd.o,$(sockd_OBJECTS)) logformat_server_test.o logformat_diagnostic_test.o $(sockd_LDADD) $(LIBS)
+
+.PHONY: check-logformat-diagnostic
+check-logformat-diagnostic: logformat_diagnostic_test
+	python3 $(srcdir)/tests/logformat_diagnostic_test.py ./logformat_diagnostic_test -v
+
+logformat_special_test.o: $(srcdir)/tests/logformat_special_test.c $(srcdir)/../lib/log.c $(srcdir)/../include/logjson.h
+	$(COMPILE) -UNDEBUG -c $(srcdir)/tests/logformat_special_test.c -o $@
+
+logformat_special_test: $(filter-out sockd.o log.o,$(sockd_OBJECTS)) logformat_server_test.o logformat_special_test.o
+	$(LINK) $(filter-out sockd.o log.o,$(sockd_OBJECTS)) logformat_server_test.o logformat_special_test.o $(sockd_LDADD) $(LIBS)
+
+.PHONY: check-logformat-special
+check-logformat-special: logformat_special_test
+	python3 $(srcdir)/tests/logformat_special_test.py ./logformat_special_test -v
+
+.PHONY: check-logformat-special-integration
+check-logformat-special-integration: sockd
+	python3 $(srcdir)/tests/logformat_special_integration_test.py ./sockd -v

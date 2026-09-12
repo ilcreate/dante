@@ -3777,6 +3777,11 @@ static const char rcsid[] =
 #define YY_NEVER_INTERACTIVE 1
 #define YY_MAIN 0
 
+#if !SOCKS_CLIENT
+static void sockd_lexfatal(const char *message) __ATTRIBUTE__((noreturn));
+#define YY_FATAL_ERROR(message) sockd_lexfatal(message)
+#endif /* !SOCKS_CLIENT */
+
 #if SOCKS_CLIENT
 /*
  * stuff that is only defined in the server case, but which I don't know
@@ -3806,13 +3811,13 @@ char   previouslexline[100];  /* just to have some context. */
 static unsigned char ismask;
 static int inroute, inclientrule;
 
-#line 3808 "config_scan.c"
+#line 3813 "config_scan.c"
 /*
  * yylineno nonoptimal under flex, reason for 'find_rule' 'yy_flex_realloc'
  * warnings.
  */
 /*%option debug                                             */
-#line 111 "config_scan.l"
+#line 116 "config_scan.l"
    /* non-exclusive start conditions. */
 
 
@@ -3865,7 +3870,7 @@ static int inroute, inclientrule;
 
 
 
-#line 3867 "config_scan.c"
+#line 3872 "config_scan.c"
 
 #define INITIAL 0
 #define start_address 1
@@ -4138,7 +4143,7 @@ YY_DECL
 		}
 
 	{
-#line 169 "config_scan.l"
+#line 174 "config_scan.l"
 
 
 
@@ -4184,7 +4189,7 @@ YY_DECL
     * start-condition dependent stuff.
     */
 
-#line 4186 "config_scan.c"
+#line 4191 "config_scan.c"
 
 	while ( /*CONSTCOND*/1 )		/* loops until end-of-file is reached */
 		{
@@ -4278,7 +4283,7 @@ do_action:	/* This label is used only to access EOF actions. */
 	{ /* beginning of action switch */
 case 1:
 YY_RULE_SETUP
-#line 214 "config_scan.l"
+#line 219 "config_scan.l"
 {
    yylval.string = yytext;
    return IPV4;
@@ -4286,7 +4291,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 2:
 YY_RULE_SETUP
-#line 219 "config_scan.l"
+#line 224 "config_scan.l"
 {
    yylval.string = yytext;
    return IPV6;
@@ -4294,7 +4299,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 3:
 YY_RULE_SETUP
-#line 224 "config_scan.l"
+#line 229 "config_scan.l"
 {
    yylval.string = yytext;
    return ECN;
@@ -4302,7 +4307,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 4:
 YY_RULE_SETUP
-#line 229 "config_scan.l"
+#line 234 "config_scan.l"
 {
    yylval.string = yytext;
    return SACK;
@@ -4310,7 +4315,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 5:
 YY_RULE_SETUP
-#line 234 "config_scan.l"
+#line 239 "config_scan.l"
 {
    yylval.string = yytext;
    return TIMESTAMPS;
@@ -4318,7 +4323,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 6:
 YY_RULE_SETUP
-#line 239 "config_scan.l"
+#line 244 "config_scan.l"
 {
    yylval.string = yytext;
    return WSCALE;
@@ -4326,7 +4331,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 7:
 YY_RULE_SETUP
-#line 245 "config_scan.l"
+#line 250 "config_scan.l"
 {
    yylval.string = yytext;
    return MTU_ERROR;
@@ -4334,7 +4339,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 8:
 YY_RULE_SETUP
-#line 250 "config_scan.l"
+#line 255 "config_scan.l"
 {
    BEGIN(0);
 
@@ -4344,7 +4349,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 9:
 YY_RULE_SETUP
-#line 257 "config_scan.l"
+#line 262 "config_scan.l"
 {
    BEGIN(0);
 
@@ -4354,7 +4359,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 10:
 YY_RULE_SETUP
-#line 264 "config_scan.l"
+#line 269 "config_scan.l"
 {
    yylval.string = yytext;
    return PROXYPROTOCOL_SOCKS_V4;
@@ -4362,7 +4367,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 11:
 YY_RULE_SETUP
-#line 269 "config_scan.l"
+#line 274 "config_scan.l"
 {
    yylval.string = yytext;
    return PROXYPROTOCOL_SOCKS_V5;
@@ -4370,7 +4375,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 12:
 YY_RULE_SETUP
-#line 274 "config_scan.l"
+#line 279 "config_scan.l"
 {
    yylval.string = yytext;
    return PROXYPROTOCOL_HTTP;
@@ -4378,7 +4383,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 13:
 YY_RULE_SETUP
-#line 279 "config_scan.l"
+#line 284 "config_scan.l"
 {
    yylval.string = yytext;
    return PROXYPROTOCOL_UPNP;
@@ -4386,7 +4391,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 14:
 YY_RULE_SETUP
-#line 284 "config_scan.l"
+#line 289 "config_scan.l"
 {
    yylval.string = yytext;
    return COMMAND_BIND;
@@ -4394,7 +4399,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 15:
 YY_RULE_SETUP
-#line 289 "config_scan.l"
+#line 294 "config_scan.l"
 {
    yylval.string = yytext;
    return COMMAND_CONNECT;
@@ -4402,7 +4407,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 16:
 YY_RULE_SETUP
-#line 294 "config_scan.l"
+#line 299 "config_scan.l"
 {
    yylval.string = yytext;
    return COMMAND_UDPASSOCIATE;
@@ -4410,7 +4415,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 17:
 YY_RULE_SETUP
-#line 299 "config_scan.l"
+#line 304 "config_scan.l"
 {
    yylval.string = yytext;
    return COMMAND_BINDREPLY;
@@ -4418,7 +4423,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 18:
 YY_RULE_SETUP
-#line 304 "config_scan.l"
+#line 309 "config_scan.l"
 {
    yylval.string = yytext;
    return COMMAND_UDPREPLY;
@@ -4426,7 +4431,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 19:
 YY_RULE_SETUP
-#line 310 "config_scan.l"
+#line 315 "config_scan.l"
 {
    yylval.string = yytext;
    return URL;
@@ -4434,7 +4439,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 20:
 YY_RULE_SETUP
-#line 315 "config_scan.l"
+#line 320 "config_scan.l"
 {
    BEGIN(start_port);
 
@@ -4447,7 +4452,7 @@ case 21:
 (yy_c_buf_p) = yy_cp = yy_bp + 1;
 YY_DO_BEFORE_ACTION; /* set up yytext again */
 YY_RULE_SETUP
-#line 322 "config_scan.l"
+#line 327 "config_scan.l"
 {
    /*
     * For some reason can't get the above "0/\/" included in the
@@ -4462,7 +4467,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 22:
 YY_RULE_SETUP
-#line 334 "config_scan.l"
+#line 339 "config_scan.l"
 {
    struct sockaddr_storage addr, mask;
    struct in6_addr ipv6;
@@ -4512,7 +4517,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 23:
 YY_RULE_SETUP
-#line 381 "config_scan.l"
+#line 386 "config_scan.l"
 {
    yylval.string = yytext;
    return PORT;
@@ -4523,7 +4528,7 @@ YY_RULE_SETUP
     */
 case 24:
 YY_RULE_SETUP
-#line 390 "config_scan.l"
+#line 395 "config_scan.l"
 {
    BEGIN(start_cpuoption);
 
@@ -4533,7 +4538,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 25:
 YY_RULE_SETUP
-#line 397 "config_scan.l"
+#line 402 "config_scan.l"
 {
    BEGIN(start_processtype);
 
@@ -4545,7 +4550,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 26:
 YY_RULE_SETUP
-#line 406 "config_scan.l"
+#line 411 "config_scan.l"
 {
    BEGIN(start_processtype);
 
@@ -4557,7 +4562,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 27:
 YY_RULE_SETUP
-#line 415 "config_scan.l"
+#line 420 "config_scan.l"
 {
    BEGIN(ismask ? start_schedulemask : start_schedulepolicy);
 
@@ -4567,7 +4572,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 28:
 YY_RULE_SETUP
-#line 422 "config_scan.l"
+#line 427 "config_scan.l"
 {
    BEGIN(ismask ? start_schedulemask : start_schedulepolicy);
 
@@ -4577,7 +4582,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 29:
 YY_RULE_SETUP
-#line 429 "config_scan.l"
+#line 434 "config_scan.l"
 {
    BEGIN(ismask ? start_schedulemask : start_schedulepolicy);
 
@@ -4587,7 +4592,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 30:
 YY_RULE_SETUP
-#line 436 "config_scan.l"
+#line 441 "config_scan.l"
 {
    BEGIN(ismask ? start_schedulemask : start_schedulepolicy);
 
@@ -4597,7 +4602,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 31:
 YY_RULE_SETUP
-#line 443 "config_scan.l"
+#line 448 "config_scan.l"
 {
    BEGIN(ismask ? start_schedulemask : start_schedulepolicy);
 
@@ -4607,7 +4612,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 32:
 YY_RULE_SETUP
-#line 450 "config_scan.l"
+#line 455 "config_scan.l"
 {
    BEGIN(0);
 
@@ -4618,7 +4623,7 @@ YY_RULE_SETUP
 case 33:
 /* rule 33 can match eol */
 YY_RULE_SETUP
-#line 457 "config_scan.l"
+#line 462 "config_scan.l"
 {
 #if SOCKS_CLIENT
    SERRX(0);
@@ -4648,7 +4653,7 @@ YY_RULE_SETUP
      */
 case 34:
 YY_RULE_SETUP
-#line 486 "config_scan.l"
+#line 491 "config_scan.l"
 {
    BEGIN(start_socketoption);
 
@@ -4658,7 +4663,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 35:
 YY_RULE_SETUP
-#line 493 "config_scan.l"
+#line 498 "config_scan.l"
 {
    BEGIN(start_socketoption);
 
@@ -4668,7 +4673,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 36:
 YY_RULE_SETUP
-#line 500 "config_scan.l"
+#line 505 "config_scan.l"
 {
    BEGIN(start_socketoption);
 
@@ -4678,7 +4683,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 37:
 YY_RULE_SETUP
-#line 507 "config_scan.l"
+#line 512 "config_scan.l"
 {
    BEGIN(start_socketoption);
 
@@ -4688,7 +4693,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 38:
 YY_RULE_SETUP
-#line 515 "config_scan.l"
+#line 520 "config_scan.l"
 {
    const sockopt_t *sockopt;
 
@@ -4703,7 +4708,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 39:
 YY_RULE_SETUP
-#line 527 "config_scan.l"
+#line 532 "config_scan.l"
 {
    BEGIN(0);
 
@@ -4713,7 +4718,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 40:
 YY_RULE_SETUP
-#line 534 "config_scan.l"
+#line 539 "config_scan.l"
 {
    yylval.string = yytext;
    return RULE_LOG_CONNECT;
@@ -4721,7 +4726,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 41:
 YY_RULE_SETUP
-#line 539 "config_scan.l"
+#line 544 "config_scan.l"
 {
    yylval.string = yytext;
    return RULE_LOG_DATA;
@@ -4729,7 +4734,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 42:
 YY_RULE_SETUP
-#line 544 "config_scan.l"
+#line 549 "config_scan.l"
 {
    yylval.string = yytext;
    return RULE_LOG_DISCONNECT;
@@ -4737,7 +4742,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 43:
 YY_RULE_SETUP
-#line 549 "config_scan.l"
+#line 554 "config_scan.l"
 {
    yylval.string = yytext;
    return RULE_LOG_ERROR;
@@ -4745,7 +4750,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 44:
 YY_RULE_SETUP
-#line 554 "config_scan.l"
+#line 559 "config_scan.l"
 {
    yylval.string = yytext;
    return RULE_LOG_IOOPERATION;
@@ -4753,7 +4758,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 45:
 YY_RULE_SETUP
-#line 559 "config_scan.l"
+#line 564 "config_scan.l"
 {
    yylval.string = yytext;
    return RULE_LOG_TCPINFO;
@@ -4764,7 +4769,7 @@ case 46:
 (yy_c_buf_p) = yy_cp -= 1;
 YY_DO_BEFORE_ACTION; /* set up yytext again */
 YY_RULE_SETUP
-#line 564 "config_scan.l"
+#line 569 "config_scan.l"
 {
    const loglevel_t *l;
    char visbuf[256];
@@ -4781,7 +4786,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 47:
 YY_RULE_SETUP
-#line 578 "config_scan.l"
+#line 583 "config_scan.l"
 {
    BEGIN(start_errorsymbol);
 
@@ -4791,7 +4796,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 48:
 YY_RULE_SETUP
-#line 585 "config_scan.l"
+#line 590 "config_scan.l"
 {
    BEGIN(start_tcpoption);
 
@@ -4801,7 +4806,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 49:
 YY_RULE_SETUP
-#line 592 "config_scan.l"
+#line 597 "config_scan.l"
 {
    BEGIN(start_tcpoption);
 
@@ -4811,7 +4816,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 50:
 YY_RULE_SETUP
-#line 600 "config_scan.l"
+#line 605 "config_scan.l"
 {
 #if !SOCKS_CLIENT
 
@@ -4836,7 +4841,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 51:
 YY_RULE_SETUP
-#line 622 "config_scan.l"
+#line 627 "config_scan.l"
 {
    yylval.string = yytext;
    return BSDAUTHSTYLENAME;
@@ -4844,7 +4849,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 52:
 YY_RULE_SETUP
-#line 627 "config_scan.l"
+#line 632 "config_scan.l"
 {
    BEGIN(0);
    yylval.string = yytext;
@@ -4853,7 +4858,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 53:
 YY_RULE_SETUP
-#line 633 "config_scan.l"
+#line 638 "config_scan.l"
 {
    yylval.string = yytext;
    return LOGFILE;
@@ -4861,7 +4866,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 54:
 YY_RULE_SETUP
-#line 638 "config_scan.l"
+#line 643 "config_scan.l"
 {
    yylval.string = yytext;
    return USERNAME;
@@ -4869,7 +4874,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 55:
 YY_RULE_SETUP
-#line 643 "config_scan.l"
+#line 648 "config_scan.l"
 {
    yylval.string = yytext;
    return GROUPNAME;
@@ -4877,7 +4882,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 56:
 YY_RULE_SETUP
-#line 648 "config_scan.l"
+#line 653 "config_scan.l"
 {
    yylval.string = yytext;
    return LIBWRAP_FILE;
@@ -4885,7 +4890,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 57:
 YY_RULE_SETUP
-#line 653 "config_scan.l"
+#line 658 "config_scan.l"
 {
    yylval.string = yytext;
    return LDAP_DOMAIN;
@@ -4893,7 +4898,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 58:
 YY_RULE_SETUP
-#line 658 "config_scan.l"
+#line 663 "config_scan.l"
 {
    yylval.string = yytext;
    return LDAP_BASEDN;
@@ -4901,7 +4906,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 59:
 YY_RULE_SETUP
-#line 663 "config_scan.l"
+#line 668 "config_scan.l"
 {
    yylval.string = yytext;
    return LDAP_FILTER;
@@ -4909,7 +4914,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 60:
 YY_RULE_SETUP
-#line 668 "config_scan.l"
+#line 673 "config_scan.l"
 {
    yylval.string = yytext;
    return LDAP_URL;
@@ -4917,7 +4922,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 61:
 YY_RULE_SETUP
-#line 673 "config_scan.l"
+#line 678 "config_scan.l"
 {
    yylval.string = yytext;
    return LDAP_ATTRIBUTE;
@@ -4925,7 +4930,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 62:
 YY_RULE_SETUP
-#line 678 "config_scan.l"
+#line 683 "config_scan.l"
 {
    yylval.string = yytext;
    return LDAPGROUP_NAME;
@@ -4933,7 +4938,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 63:
 YY_RULE_SETUP
-#line 683 "config_scan.l"
+#line 688 "config_scan.l"
 {
    yylval.string = yytext;
    return LDAPSERVER_NAME;
@@ -4941,7 +4946,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 64:
 YY_RULE_SETUP
-#line 688 "config_scan.l"
+#line 693 "config_scan.l"
 {
    yylval.string = yytext;
    return LDAP_CERTFILE;
@@ -4949,7 +4954,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 65:
 YY_RULE_SETUP
-#line 693 "config_scan.l"
+#line 698 "config_scan.l"
 {
    yylval.string = yytext;
    return LDAP_CERTPATH;
@@ -4957,7 +4962,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 66:
 YY_RULE_SETUP
-#line 698 "config_scan.l"
+#line 703 "config_scan.l"
 {
    yylval.string = yytext;
    return LDAPKEYTABNAME;
@@ -4965,7 +4970,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 67:
 YY_RULE_SETUP
-#line 703 "config_scan.l"
+#line 708 "config_scan.l"
 {
    yylval.string = yytext;
    return LDAPKEYTABNAME;
@@ -4973,7 +4978,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 68:
 YY_RULE_SETUP
-#line 708 "config_scan.l"
+#line 713 "config_scan.l"
 {
    yylval.string = yytext;
    return PACSID_NAME;
@@ -4981,7 +4986,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 69:
 YY_RULE_SETUP
-#line 713 "config_scan.l"
+#line 718 "config_scan.l"
 {
    yylval.string = yytext;
    return GSSAPIKEYTABNAME;
@@ -4989,7 +4994,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 70:
 YY_RULE_SETUP
-#line 718 "config_scan.l"
+#line 723 "config_scan.l"
 {
    yylval.string = yytext;
    return GSSAPIKEYTABNAME;
@@ -4997,7 +5002,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 71:
 YY_RULE_SETUP
-#line 723 "config_scan.l"
+#line 728 "config_scan.l"
 {
    yylval.string = yytext;
    return GSSAPISERVICENAME;
@@ -5005,7 +5010,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 72:
 YY_RULE_SETUP
-#line 728 "config_scan.l"
+#line 733 "config_scan.l"
 {
    BEGIN(start_line);
 
@@ -5015,7 +5020,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 73:
 YY_RULE_SETUP
-#line 735 "config_scan.l"
+#line 740 "config_scan.l"
 {
    BEGIN(0);
 
@@ -5025,7 +5030,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 74:
 YY_RULE_SETUP
-#line 742 "config_scan.l"
+#line 747 "config_scan.l"
 {
    yylval.string = yytext;
    return NODNSMISMATCH;
@@ -5033,7 +5038,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 75:
 YY_RULE_SETUP
-#line 747 "config_scan.l"
+#line 752 "config_scan.l"
 {
    yylval.string = yytext;
    return NODNSUNKNOWN;
@@ -5041,7 +5046,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 76:
 YY_RULE_SETUP
-#line 752 "config_scan.l"
+#line 757 "config_scan.l"
 {
    yylval.string = yytext;
    return CHECKREPLYAUTH;
@@ -5049,7 +5054,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 77:
 YY_RULE_SETUP
-#line 757 "config_scan.l"
+#line 762 "config_scan.l"
 {
    yylval.string = yytext;
    return PROTOCOL_TCP;
@@ -5057,7 +5062,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 78:
 YY_RULE_SETUP
-#line 762 "config_scan.l"
+#line 767 "config_scan.l"
 {
    yylval.string = yytext;
    return PROTOCOL_UDP;
@@ -5065,7 +5070,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 79:
 YY_RULE_SETUP
-#line 767 "config_scan.l"
+#line 772 "config_scan.l"
 {
    yylval.string = yytext;
    return PROTOCOL_FAKE;
@@ -5073,7 +5078,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 80:
 YY_RULE_SETUP
-#line 772 "config_scan.l"
+#line 777 "config_scan.l"
 {
    yylval.string = yytext;
    return GSSAPIENC_ANY;
@@ -5081,7 +5086,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 81:
 YY_RULE_SETUP
-#line 777 "config_scan.l"
+#line 782 "config_scan.l"
 {
    yylval.string = yytext;
    return GSSAPIENC_CLEAR;
@@ -5089,7 +5094,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 82:
 YY_RULE_SETUP
-#line 782 "config_scan.l"
+#line 787 "config_scan.l"
 {
    yylval.string = yytext;
    return GSSAPIENC_INTEGRITY;
@@ -5097,7 +5102,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 83:
 YY_RULE_SETUP
-#line 787 "config_scan.l"
+#line 792 "config_scan.l"
 {
    yylval.string = yytext;
    return GSSAPIENC_CONFIDENTIALITY;
@@ -5105,7 +5110,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 84:
 YY_RULE_SETUP
-#line 792 "config_scan.l"
+#line 797 "config_scan.l"
 {
    yylval.string = yytext;
    return GSSAPIENC_PERMESSAGE;
@@ -5113,7 +5118,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 85:
 YY_RULE_SETUP
-#line 797 "config_scan.l"
+#line 802 "config_scan.l"
 {
    yylval.string = yytext;
    return REALNAME;
@@ -5121,7 +5126,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 86:
 YY_RULE_SETUP
-#line 802 "config_scan.l"
+#line 807 "config_scan.l"
 {
    yylval.method = AUTHMETHOD_NONE;
    return METHODNAME;
@@ -5129,7 +5134,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 87:
 YY_RULE_SETUP
-#line 807 "config_scan.l"
+#line 812 "config_scan.l"
 {
    yylval.method = AUTHMETHOD_GSSAPI;
    return METHODNAME;
@@ -5137,7 +5142,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 88:
 YY_RULE_SETUP
-#line 812 "config_scan.l"
+#line 817 "config_scan.l"
 {
    yylval.method = AUTHMETHOD_UNAME;
    return METHODNAME;
@@ -5145,7 +5150,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 89:
 YY_RULE_SETUP
-#line 817 "config_scan.l"
+#line 822 "config_scan.l"
 {
    yylval.method = AUTHMETHOD_RFC931;
    return METHODNAME;
@@ -5153,7 +5158,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 90:
 YY_RULE_SETUP
-#line 822 "config_scan.l"
+#line 827 "config_scan.l"
 {
    yylval.number = AUTHMETHOD_PAM_ANY;
    return METHODNAME;
@@ -5161,7 +5166,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 91:
 YY_RULE_SETUP
-#line 827 "config_scan.l"
+#line 832 "config_scan.l"
 {
    yylval.method = AUTHMETHOD_PAM_ADDRESS;
    return METHODNAME;
@@ -5169,7 +5174,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 92:
 YY_RULE_SETUP
-#line 832 "config_scan.l"
+#line 837 "config_scan.l"
 {
    yylval.method = AUTHMETHOD_PAM_USERNAME;
    return METHODNAME;
@@ -5177,7 +5182,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 93:
 YY_RULE_SETUP
-#line 837 "config_scan.l"
+#line 842 "config_scan.l"
 {
    yywarnx_deprecated(yytext, "pam.*");
 
@@ -5187,7 +5192,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 94:
 YY_RULE_SETUP
-#line 845 "config_scan.l"
+#line 850 "config_scan.l"
 {
    yylval.method = AUTHMETHOD_BSDAUTH;
    return METHODNAME;
@@ -5195,7 +5200,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 95:
 YY_RULE_SETUP
-#line 850 "config_scan.l"
+#line 855 "config_scan.l"
 {
    yylval.method = AUTHMETHOD_LDAPAUTH;
    return METHODNAME;
@@ -5204,7 +5209,7 @@ YY_RULE_SETUP
 /* non-start condition dependents. */
 case 96:
 YY_RULE_SETUP
-#line 857 "config_scan.l"
+#line 862 "config_scan.l"
 {
    BEGIN(start_servicename);
 
@@ -5214,7 +5219,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 97:
 YY_RULE_SETUP
-#line 864 "config_scan.l"
+#line 869 "config_scan.l"
 {
    inclientrule = 1;
 
@@ -5224,7 +5229,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 98:
 YY_RULE_SETUP
-#line 871 "config_scan.l"
+#line 876 "config_scan.l"
 {
    yylval.string = yytext;
    return HOSTIDRULE;
@@ -5232,7 +5237,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 99:
 YY_RULE_SETUP
-#line 876 "config_scan.l"
+#line 881 "config_scan.l"
 {
    yylval.string = yytext;
    return SOCKSRULE;
@@ -5240,7 +5245,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 100:
 YY_RULE_SETUP
-#line 881 "config_scan.l"
+#line 886 "config_scan.l"
 { /* deprecated socks rule  syntax, without "socks "-prefix. */
 #if SOCKS_CLIENT
 
@@ -5265,7 +5270,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 101:
 YY_RULE_SETUP
-#line 904 "config_scan.l"
+#line 909 "config_scan.l"
 {
    yylval.string = yytext;
    return ALARMTYPE_DATA;
@@ -5273,7 +5278,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 102:
 YY_RULE_SETUP
-#line 909 "config_scan.l"
+#line 914 "config_scan.l"
 {
    yylval.string = yytext;
    return ALARMTYPE_DISCONNECT;
@@ -5284,7 +5289,7 @@ case 103:
 (yy_c_buf_p) = yy_cp = yy_bp + 5;
 YY_DO_BEFORE_ACTION; /* set up yytext again */
 YY_RULE_SETUP
-#line 914 "config_scan.l"
+#line 919 "config_scan.l"
 {
    BEGIN(start_alarmtest);
 
@@ -5299,7 +5304,7 @@ YY_LINENO_REWIND_TO(yy_bp + 5);
 (yy_c_buf_p) = yy_cp = yy_bp + 5;
 YY_DO_BEFORE_ACTION; /* set up yytext again */
 YY_RULE_SETUP
-#line 922 "config_scan.l"
+#line 927 "config_scan.l"
 {
    yylval.string = yytext;
    return RECVSIDE;
@@ -5312,7 +5317,7 @@ YY_LINENO_REWIND_TO(yy_bp + 5);
 (yy_c_buf_p) = yy_cp = yy_bp + 5;
 YY_DO_BEFORE_ACTION; /* set up yytext again */
 YY_RULE_SETUP
-#line 927 "config_scan.l"
+#line 932 "config_scan.l"
 {
    yylval.string = yytext;
    return SENDSIDE;
@@ -5320,7 +5325,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 106:
 YY_RULE_SETUP
-#line 932 "config_scan.l"
+#line 937 "config_scan.l"
 {
    yylval.string = yytext;
    return DEBUGGING;
@@ -5328,7 +5333,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 107:
 YY_RULE_SETUP
-#line 937 "config_scan.l"
+#line 942 "config_scan.l"
 {
    inroute = 1;
 
@@ -5338,7 +5343,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 108:
 YY_RULE_SETUP
-#line 944 "config_scan.l"
+#line 949 "config_scan.l"
 {
    yylval.string = yytext;
    return ROUTE;
@@ -5346,7 +5351,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 109:
 YY_RULE_SETUP
-#line 950 "config_scan.l"
+#line 955 "config_scan.l"
 {
    yylval.string = yytext;
    return GLOBALROUTEOPTION;
@@ -5354,7 +5359,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 110:
 YY_RULE_SETUP
-#line 956 "config_scan.l"
+#line 961 "config_scan.l"
 {
    yylval.string = yytext;
    return MAXFAIL;
@@ -5362,7 +5367,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 111:
 YY_RULE_SETUP
-#line 961 "config_scan.l"
+#line 966 "config_scan.l"
 {
    yylval.string = yytext;
    return BADROUTE_EXPIRE;
@@ -5370,7 +5375,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 112:
 YY_RULE_SETUP
-#line 966 "config_scan.l"
+#line 971 "config_scan.l"
 {
    BEGIN(start_protocol);
 
@@ -5380,7 +5385,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 113:
 YY_RULE_SETUP
-#line 973 "config_scan.l"
+#line 978 "config_scan.l"
 {
    BEGIN(start_srchost);
 
@@ -5390,7 +5395,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 114:
 YY_RULE_SETUP
-#line 980 "config_scan.l"
+#line 985 "config_scan.l"
 {
    BEGIN(start_proxyprotocol);
 
@@ -5400,7 +5405,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 115:
 YY_RULE_SETUP
-#line 987 "config_scan.l"
+#line 992 "config_scan.l"
 {
    BEGIN(start_logoutput);
 
@@ -5410,7 +5415,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 116:
 YY_RULE_SETUP
-#line 994 "config_scan.l"
+#line 999 "config_scan.l"
 {
    BEGIN(start_logformat);
 
@@ -5420,7 +5425,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 117:
 YY_RULE_SETUP
-#line 1001 "config_scan.l"
+#line 1006 "config_scan.l"
 {
    BEGIN(start_logoutput);
 
@@ -5430,7 +5435,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 118:
 YY_RULE_SETUP
-#line 1009 "config_scan.l"
+#line 1014 "config_scan.l"
 {
    BEGIN(start_protocol);
 
@@ -5440,7 +5445,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 119:
 YY_RULE_SETUP
-#line 1016 "config_scan.l"
+#line 1021 "config_scan.l"
 {
    BEGIN(start_command);
 
@@ -5450,7 +5455,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 120:
 YY_RULE_SETUP
-#line 1023 "config_scan.l"
+#line 1028 "config_scan.l"
 {
    yylval.string = yytext;
    return UDPPORTRANGE;
@@ -5458,7 +5463,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 121:
 YY_RULE_SETUP
-#line 1028 "config_scan.l"
+#line 1033 "config_scan.l"
 {
    yylval.string = yytext;
    return UDPCONNECTDST;
@@ -5466,7 +5471,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 122:
 YY_RULE_SETUP
-#line 1033 "config_scan.l"
+#line 1038 "config_scan.l"
 {
    yylval.string = yytext;
    return REDIRECT;
@@ -5474,7 +5479,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 123:
 YY_RULE_SETUP
-#line 1038 "config_scan.l"
+#line 1043 "config_scan.l"
 {
    yylval.string = yytext;
    return BANDWIDTH;
@@ -5482,7 +5487,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 124:
 YY_RULE_SETUP
-#line 1043 "config_scan.l"
+#line 1048 "config_scan.l"
 {
    yylval.string = yytext;
    return SESSIONMAX;
@@ -5490,7 +5495,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 125:
 YY_RULE_SETUP
-#line 1048 "config_scan.l"
+#line 1053 "config_scan.l"
 {
    yylval.string = yytext;
    return SESSION_INHERITABLE;
@@ -5498,7 +5503,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 126:
 YY_RULE_SETUP
-#line 1053 "config_scan.l"
+#line 1058 "config_scan.l"
 {
    yylval.string = yytext;
    return SESSIONTHROTTLE;
@@ -5506,7 +5511,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 127:
 YY_RULE_SETUP
-#line 1058 "config_scan.l"
+#line 1063 "config_scan.l"
 {
    BEGIN(start_statekey);
 
@@ -5516,7 +5521,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 128:
 YY_RULE_SETUP
-#line 1065 "config_scan.l"
+#line 1070 "config_scan.l"
 {
    yylval.string = yytext;
    return SESSIONSTATE_THROTTLE;
@@ -5524,7 +5529,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 129:
 YY_RULE_SETUP
-#line 1070 "config_scan.l"
+#line 1075 "config_scan.l"
 {
    yylval.string = yytext;
    return SESSIONSTATE_MAX;
@@ -5532,7 +5537,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 130:
 YY_RULE_SETUP
-#line 1076 "config_scan.l"
+#line 1081 "config_scan.l"
 {
    yylval.string = yytext;
    return WORD__IN;
@@ -5540,7 +5545,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 131:
 YY_RULE_SETUP
-#line 1081 "config_scan.l"
+#line 1086 "config_scan.l"
 {
    BEGIN(start_address);
 
@@ -5550,7 +5555,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 132:
 YY_RULE_SETUP
-#line 1088 "config_scan.l"
+#line 1093 "config_scan.l"
 {
    BEGIN(start_address);
 
@@ -5560,7 +5565,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 133:
 YY_RULE_SETUP
-#line 1095 "config_scan.l"
+#line 1100 "config_scan.l"
 {
    BEGIN(start_address);
 
@@ -5570,7 +5575,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 134:
 YY_RULE_SETUP
-#line 1102 "config_scan.l"
+#line 1107 "config_scan.l"
 {
    yylval.string = yytext;
    return YES;
@@ -5578,7 +5583,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 135:
 YY_RULE_SETUP
-#line 1107 "config_scan.l"
+#line 1112 "config_scan.l"
 {
    yylval.string = yytext;
    return NO;
@@ -5589,7 +5594,7 @@ case 136:
 (yy_c_buf_p) = yy_cp = yy_bp + 9;
 YY_DO_BEFORE_ACTION; /* set up yytext again */
 YY_RULE_SETUP
-#line 1112 "config_scan.l"
+#line 1117 "config_scan.l"
 {
    BEGIN(start_socketprotocol);
 
@@ -5602,7 +5607,7 @@ case 137:
 (yy_c_buf_p) = yy_cp = yy_bp + 9;
 YY_DO_BEFORE_ACTION; /* set up yytext again */
 YY_RULE_SETUP
-#line 1119 "config_scan.l"
+#line 1124 "config_scan.l"
 {
    yylval.string = yytext;
    return ALARMIF_INTERNAL;
@@ -5613,7 +5618,7 @@ case 138:
 (yy_c_buf_p) = yy_cp = yy_bp + 12;
 YY_DO_BEFORE_ACTION; /* set up yytext again */
 YY_RULE_SETUP
-#line 1124 "config_scan.l"
+#line 1129 "config_scan.l"
 {
    BEGIN(start_loglevel);
 
@@ -5623,7 +5628,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 139:
 YY_RULE_SETUP
-#line 1131 "config_scan.l"
+#line 1136 "config_scan.l"
 {
    BEGIN(start_protocol);
 
@@ -5638,7 +5643,7 @@ YY_LINENO_REWIND_TO(yy_bp + 8);
 (yy_c_buf_p) = yy_cp = yy_bp + 8;
 YY_DO_BEFORE_ACTION; /* set up yytext again */
 YY_RULE_SETUP
-#line 1139 "config_scan.l"
+#line 1144 "config_scan.l"
 {
    BEGIN(start_address);
 
@@ -5651,7 +5656,7 @@ case 141:
 (yy_c_buf_p) = yy_cp = yy_bp + 9;
 YY_DO_BEFORE_ACTION; /* set up yytext again */
 YY_RULE_SETUP
-#line 1147 "config_scan.l"
+#line 1152 "config_scan.l"
 {
    BEGIN(start_socketprotocol);
 
@@ -5664,7 +5669,7 @@ case 142:
 (yy_c_buf_p) = yy_cp = yy_bp + 9;
 YY_DO_BEFORE_ACTION; /* set up yytext again */
 YY_RULE_SETUP
-#line 1154 "config_scan.l"
+#line 1159 "config_scan.l"
 {
    yylval.string = yytext;
    return ALARMIF_EXTERNAL;
@@ -5672,7 +5677,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 143:
 YY_RULE_SETUP
-#line 1159 "config_scan.l"
+#line 1164 "config_scan.l"
 {
    BEGIN(start_protocol);
 
@@ -5682,7 +5687,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 144:
 YY_RULE_SETUP
-#line 1166 "config_scan.l"
+#line 1171 "config_scan.l"
 {
    yylval.string = yytext;
    return EXTERNAL_ROTATION;
@@ -5693,7 +5698,7 @@ case 145:
 (yy_c_buf_p) = yy_cp = yy_bp + 12;
 YY_DO_BEFORE_ACTION; /* set up yytext again */
 YY_RULE_SETUP
-#line 1171 "config_scan.l"
+#line 1176 "config_scan.l"
 {
    BEGIN(start_loglevel);
 
@@ -5708,7 +5713,7 @@ YY_LINENO_REWIND_TO(yy_bp + 8);
 (yy_c_buf_p) = yy_cp = yy_bp + 8;
 YY_DO_BEFORE_ACTION; /* set up yytext again */
 YY_RULE_SETUP
-#line 1178 "config_scan.l"
+#line 1183 "config_scan.l"
 {
    BEGIN(start_address);
 
@@ -5718,7 +5723,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 147:
 YY_RULE_SETUP
-#line 1185 "config_scan.l"
+#line 1190 "config_scan.l"
 {
    yylval.string = yytext;
    return NONE;
@@ -5726,7 +5731,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 148:
 YY_RULE_SETUP
-#line 1190 "config_scan.l"
+#line 1195 "config_scan.l"
 {
    yylval.string = yytext;
    return SAMESAME;
@@ -5734,14 +5739,14 @@ YY_RULE_SETUP
 	YY_BREAK
 case 149:
 YY_RULE_SETUP
-#line 1196 "config_scan.l"
+#line 1201 "config_scan.l"
 {
    yywarnx_deprecated(yytext, NULL);
 }
 	YY_BREAK
 case 150:
 YY_RULE_SETUP
-#line 1200 "config_scan.l"
+#line 1205 "config_scan.l"
 {
    yylval.string = yytext;
    return PROC_MAXREQUESTS;
@@ -5749,7 +5754,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 151:
 YY_RULE_SETUP
-#line 1205 "config_scan.l"
+#line 1210 "config_scan.l"
 {
    yylval.string = yytext;
    return PROC_MAXLIFETIME;
@@ -5757,7 +5762,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 152:
 YY_RULE_SETUP
-#line 1210 "config_scan.l"
+#line 1215 "config_scan.l"
 {
    BEGIN(start_username);
 
@@ -5767,7 +5772,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 153:
 YY_RULE_SETUP
-#line 1217 "config_scan.l"
+#line 1222 "config_scan.l"
 {
    BEGIN(start_groupname);
 
@@ -5777,7 +5782,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 154:
 YY_RULE_SETUP
-#line 1224 "config_scan.l"
+#line 1229 "config_scan.l"
 {
    BEGIN(start_username);
 
@@ -5787,7 +5792,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 155:
 YY_RULE_SETUP
-#line 1231 "config_scan.l"
+#line 1236 "config_scan.l"
 {
    BEGIN(start_username);
 
@@ -5797,7 +5802,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 156:
 YY_RULE_SETUP
-#line 1238 "config_scan.l"
+#line 1243 "config_scan.l"
 {
    BEGIN(start_username);
 
@@ -5807,7 +5812,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 157:
 YY_RULE_SETUP
-#line 1245 "config_scan.l"
+#line 1250 "config_scan.l"
 {
    yylval.string = yytext;
    return CONNECTTIMEOUT;
@@ -5815,7 +5820,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 158:
 YY_RULE_SETUP
-#line 1250 "config_scan.l"
+#line 1255 "config_scan.l"
 {
    yylval.string = yytext;
    return TCP_FIN_WAIT;
@@ -5823,7 +5828,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 159:
 YY_RULE_SETUP
-#line 1256 "config_scan.l"
+#line 1261 "config_scan.l"
 {
    yylval.string = yytext;
    return IOTIMEOUT;
@@ -5831,7 +5836,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 160:
 YY_RULE_SETUP
-#line 1261 "config_scan.l"
+#line 1266 "config_scan.l"
 {
    yylval.string = yytext;
    return IOTIMEOUT_TCP;
@@ -5839,7 +5844,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 161:
 YY_RULE_SETUP
-#line 1266 "config_scan.l"
+#line 1271 "config_scan.l"
 {
    yylval.string = yytext;
    return IOTIMEOUT_UDP;
@@ -5847,7 +5852,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 162:
 YY_RULE_SETUP
-#line 1271 "config_scan.l"
+#line 1276 "config_scan.l"
 {
    yylval.string = yytext;
    return NEGOTIATETIMEOUT;
@@ -5855,7 +5860,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 163:
 YY_RULE_SETUP
-#line 1277 "config_scan.l"
+#line 1282 "config_scan.l"
 {
    yylval.string = yytext;
    return COMPATIBILITY;
@@ -5863,7 +5868,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 164:
 YY_RULE_SETUP
-#line 1282 "config_scan.l"
+#line 1287 "config_scan.l"
 {
    yylval.string = yytext;
    return SAMEPORT;
@@ -5871,7 +5876,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 165:
 YY_RULE_SETUP
-#line 1287 "config_scan.l"
+#line 1292 "config_scan.l"
 {
    yylval.string = yytext;
    return DRAFT_5_05;
@@ -5879,7 +5884,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 166:
 YY_RULE_SETUP
-#line 1292 "config_scan.l"
+#line 1297 "config_scan.l"
 {
    yylval.string = yytext;
    return CLIENTCOMPATIBILITY;
@@ -5887,7 +5892,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 167:
 YY_RULE_SETUP
-#line 1297 "config_scan.l"
+#line 1302 "config_scan.l"
 {
    yylval.string = yytext;
    return NECGSSAPI;
@@ -5895,7 +5900,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 168:
 YY_RULE_SETUP
-#line 1302 "config_scan.l"
+#line 1307 "config_scan.l"
 {
    yylval.string = yytext;
    return EXTENSION;
@@ -5903,7 +5908,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 169:
 YY_RULE_SETUP
-#line 1307 "config_scan.l"
+#line 1312 "config_scan.l"
 {
    yylval.string = yytext;
    return BIND;
@@ -5911,7 +5916,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 170:
 YY_RULE_SETUP
-#line 1312 "config_scan.l"
+#line 1317 "config_scan.l"
 {
    BEGIN(start_address);
 
@@ -5921,7 +5926,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 171:
 YY_RULE_SETUP
-#line 1319 "config_scan.l"
+#line 1324 "config_scan.l"
 {
    yylval.string = yytext;
    return MONITOR;
@@ -5929,7 +5934,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 172:
 YY_RULE_SETUP
-#line 1324 "config_scan.l"
+#line 1329 "config_scan.l"
 {
    BEGIN(start_hostindex);
 
@@ -5939,7 +5944,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 173:
 YY_RULE_SETUP
-#line 1331 "config_scan.l"
+#line 1336 "config_scan.l"
 {
    BEGIN(0);
 
@@ -5949,7 +5954,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 174:
 YY_RULE_SETUP
-#line 1339 "config_scan.l"
+#line 1344 "config_scan.l"
 {
    BEGIN(start_method);
 
@@ -5959,7 +5964,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 175:
 YY_RULE_SETUP
-#line 1346 "config_scan.l"
+#line 1351 "config_scan.l"
 {
    BEGIN(start_method);
 
@@ -5969,7 +5974,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 176:
 YY_RULE_SETUP
-#line 1353 "config_scan.l"
+#line 1358 "config_scan.l"
 {
    BEGIN(start_method);
 
@@ -5993,7 +5998,7 @@ YY_RULE_SETUP
     */
 case 177:
 YY_RULE_SETUP
-#line 1377 "config_scan.l"
+#line 1382 "config_scan.l"
 {
    yylval.string = yytext;
    return VERDICT_BLOCK;
@@ -6001,7 +6006,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 178:
 YY_RULE_SETUP
-#line 1382 "config_scan.l"
+#line 1387 "config_scan.l"
 {
    yylval.string = yytext;
    return VERDICT_PASS;
@@ -6012,7 +6017,7 @@ case 179:
 (yy_c_buf_p) = yy_cp = yy_bp + 3;
 YY_DO_BEFORE_ACTION; /* set up yytext again */
 YY_RULE_SETUP
-#line 1387 "config_scan.l"
+#line 1392 "config_scan.l"
 {
    BEGIN(start_log);
 
@@ -6022,7 +6027,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 180:
 YY_RULE_SETUP
-#line 1395 "config_scan.l"
+#line 1400 "config_scan.l"
 {
    BEGIN(lineprefix);
 
@@ -6032,7 +6037,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 181:
 YY_RULE_SETUP
-#line 1402 "config_scan.l"
+#line 1407 "config_scan.l"
 {
    BEGIN(start_libwrapfile);
 
@@ -6042,7 +6047,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 182:
 YY_RULE_SETUP
-#line 1409 "config_scan.l"
+#line 1414 "config_scan.l"
 {
    BEGIN(start_libwrapfile);
 
@@ -6052,7 +6057,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 183:
 YY_RULE_SETUP
-#line 1416 "config_scan.l"
+#line 1421 "config_scan.l"
 {
    yylval.string = yytext;
    return LIBWRAP_HOSTS_ACCESS;
@@ -6060,7 +6065,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 184:
 YY_RULE_SETUP
-#line 1421 "config_scan.l"
+#line 1426 "config_scan.l"
 {
    BEGIN(start_servicename);
 
@@ -6070,7 +6075,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 185:
 YY_RULE_SETUP
-#line 1428 "config_scan.l"
+#line 1433 "config_scan.l"
 {
    BEGIN(start_bsdauthstylename);
 
@@ -6080,7 +6085,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 186:
 YY_RULE_SETUP
-#line 1435 "config_scan.l"
+#line 1440 "config_scan.l"
 {
    BEGIN(start_gssapiservicename);
 
@@ -6090,7 +6095,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 187:
 YY_RULE_SETUP
-#line 1442 "config_scan.l"
+#line 1447 "config_scan.l"
 {
        BEGIN(start_gssapikeytabname);
 
@@ -6100,7 +6105,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 188:
 YY_RULE_SETUP
-#line 1449 "config_scan.l"
+#line 1454 "config_scan.l"
 {
        BEGIN(start_encryption);
 
@@ -6110,7 +6115,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 189:
 YY_RULE_SETUP
-#line 1456 "config_scan.l"
+#line 1461 "config_scan.l"
 {
        BEGIN(start_ldapbasedn);
 
@@ -6120,7 +6125,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 190:
 YY_RULE_SETUP
-#line 1463 "config_scan.l"
+#line 1468 "config_scan.l"
 {
        BEGIN(start_ldapbasedn);
 
@@ -6130,7 +6135,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 191:
 YY_RULE_SETUP
-#line 1470 "config_scan.l"
+#line 1475 "config_scan.l"
 {
        BEGIN(start_ldapbasedn);
 
@@ -6140,7 +6145,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 192:
 YY_RULE_SETUP
-#line 1477 "config_scan.l"
+#line 1482 "config_scan.l"
 {
        BEGIN(start_ldapbasedn);
 
@@ -6150,7 +6155,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 193:
 YY_RULE_SETUP
-#line 1484 "config_scan.l"
+#line 1489 "config_scan.l"
 {
        BEGIN(start_ldapbasedn);
 
@@ -6160,7 +6165,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 194:
 YY_RULE_SETUP
-#line 1491 "config_scan.l"
+#line 1496 "config_scan.l"
 {
        BEGIN(start_ldapbasedn);
 
@@ -6170,7 +6175,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 195:
 YY_RULE_SETUP
-#line 1498 "config_scan.l"
+#line 1503 "config_scan.l"
 {
    yylval.string = yytext;
    return LDAPPORT;
@@ -6178,7 +6183,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 196:
 YY_RULE_SETUP
-#line 1503 "config_scan.l"
+#line 1508 "config_scan.l"
 {
    yylval.string = yytext;
    return LDAPAUTHPORT;
@@ -6186,7 +6191,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 197:
 YY_RULE_SETUP
-#line 1508 "config_scan.l"
+#line 1513 "config_scan.l"
 {
    yylval.string = yytext;
    return LDAPPORTSSL;
@@ -6194,7 +6199,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 198:
 YY_RULE_SETUP
-#line 1513 "config_scan.l"
+#line 1518 "config_scan.l"
 {
    yylval.string = yytext;
    return LDAPAUTHPORTSSL;
@@ -6202,7 +6207,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 199:
 YY_RULE_SETUP
-#line 1518 "config_scan.l"
+#line 1523 "config_scan.l"
 {
        BEGIN(start_ldapurl);
 
@@ -6212,7 +6217,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 200:
 YY_RULE_SETUP
-#line 1525 "config_scan.l"
+#line 1530 "config_scan.l"
 {
        BEGIN(start_ldapurl);
 
@@ -6222,7 +6227,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 201:
 YY_RULE_SETUP
-#line 1532 "config_scan.l"
+#line 1537 "config_scan.l"
 {
    BEGIN(start_ldapcertfile);
 
@@ -6232,7 +6237,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 202:
 YY_RULE_SETUP
-#line 1539 "config_scan.l"
+#line 1544 "config_scan.l"
 {
    BEGIN(start_ldapcertfile);
 
@@ -6242,7 +6247,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 203:
 YY_RULE_SETUP
-#line 1546 "config_scan.l"
+#line 1551 "config_scan.l"
 {
    BEGIN(start_ldapcertpath);
 
@@ -6252,7 +6257,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 204:
 YY_RULE_SETUP
-#line 1553 "config_scan.l"
+#line 1558 "config_scan.l"
 {
    BEGIN(start_ldapcertpath);
 
@@ -6262,7 +6267,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 205:
 YY_RULE_SETUP
-#line 1560 "config_scan.l"
+#line 1565 "config_scan.l"
 {
        BEGIN(start_ldapdomain);
 
@@ -6272,7 +6277,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 206:
 YY_RULE_SETUP
-#line 1567 "config_scan.l"
+#line 1572 "config_scan.l"
 {
        BEGIN(start_ldapdomain);
 
@@ -6282,7 +6287,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 207:
 YY_RULE_SETUP
-#line 1574 "config_scan.l"
+#line 1579 "config_scan.l"
 {
    yylval.string = yytext;
    return LDAPDEBUG;
@@ -6290,7 +6295,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 208:
 YY_RULE_SETUP
-#line 1579 "config_scan.l"
+#line 1584 "config_scan.l"
 {
    yylval.string = yytext;
    return LDAPAUTHDEBUG;
@@ -6298,7 +6303,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 209:
 YY_RULE_SETUP
-#line 1584 "config_scan.l"
+#line 1589 "config_scan.l"
 {
    yylval.string = yytext;
    return LDAPDEPTH;
@@ -6306,7 +6311,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 210:
 YY_RULE_SETUP
-#line 1589 "config_scan.l"
+#line 1594 "config_scan.l"
 {
    yylval.string = yytext;
    return LDAPSSL;
@@ -6314,7 +6319,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 211:
 YY_RULE_SETUP
-#line 1594 "config_scan.l"
+#line 1599 "config_scan.l"
 {
    yylval.string = yytext;
    return LDAPAUTHSSL;
@@ -6322,7 +6327,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 212:
 YY_RULE_SETUP
-#line 1599 "config_scan.l"
+#line 1604 "config_scan.l"
 {
    yylval.string = yytext;
    return LDAPAUTO;
@@ -6330,7 +6335,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 213:
 YY_RULE_SETUP
-#line 1604 "config_scan.l"
+#line 1609 "config_scan.l"
 {
    yylval.string = yytext;
    return LDAPAUTHAUTO;
@@ -6338,7 +6343,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 214:
 YY_RULE_SETUP
-#line 1609 "config_scan.l"
+#line 1614 "config_scan.l"
 {
    yylval.string = yytext;
    return LDAPCERTCHECK;
@@ -6346,7 +6351,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 215:
 YY_RULE_SETUP
-#line 1614 "config_scan.l"
+#line 1619 "config_scan.l"
 {
    yylval.string = yytext;
    return LDAPAUTHCERTCHECK;
@@ -6354,7 +6359,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 216:
 YY_RULE_SETUP
-#line 1619 "config_scan.l"
+#line 1624 "config_scan.l"
 {
    yylval.string = yytext;
    return LDAPAUTHKEEPREALM;
@@ -6362,7 +6367,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 217:
 YY_RULE_SETUP
-#line 1624 "config_scan.l"
+#line 1629 "config_scan.l"
 {
    yylval.string = yytext;
    return LDAPKEEPREALM;
@@ -6370,7 +6375,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 218:
 YY_RULE_SETUP
-#line 1629 "config_scan.l"
+#line 1634 "config_scan.l"
 {
        BEGIN(start_ldapfilter);
 
@@ -6380,7 +6385,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 219:
 YY_RULE_SETUP
-#line 1636 "config_scan.l"
+#line 1641 "config_scan.l"
 {
        BEGIN(start_ldapfilter);
 
@@ -6390,7 +6395,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 220:
 YY_RULE_SETUP
-#line 1643 "config_scan.l"
+#line 1648 "config_scan.l"
 {
        BEGIN(start_ldapfilter);
 
@@ -6400,7 +6405,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 221:
 YY_RULE_SETUP
-#line 1650 "config_scan.l"
+#line 1655 "config_scan.l"
 {
        BEGIN(start_ldapfilter);
 
@@ -6410,7 +6415,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 222:
 YY_RULE_SETUP
-#line 1657 "config_scan.l"
+#line 1662 "config_scan.l"
 {
        BEGIN(start_ldapfilter);
 
@@ -6420,7 +6425,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 223:
 YY_RULE_SETUP
-#line 1664 "config_scan.l"
+#line 1669 "config_scan.l"
 {
        BEGIN(start_ldapattribute);
 
@@ -6430,7 +6435,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 224:
 YY_RULE_SETUP
-#line 1671 "config_scan.l"
+#line 1676 "config_scan.l"
 {
        BEGIN(start_ldapattribute);
 
@@ -6440,7 +6445,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 225:
 YY_RULE_SETUP
-#line 1678 "config_scan.l"
+#line 1683 "config_scan.l"
 {
        BEGIN(start_ldapattribute);
 
@@ -6450,7 +6455,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 226:
 YY_RULE_SETUP
-#line 1685 "config_scan.l"
+#line 1690 "config_scan.l"
 {
        BEGIN(start_ldapattribute);
 
@@ -6460,7 +6465,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 227:
 YY_RULE_SETUP
-#line 1692 "config_scan.l"
+#line 1697 "config_scan.l"
 {
    BEGIN(start_ldapservername);
 
@@ -6470,7 +6475,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 228:
 YY_RULE_SETUP
-#line 1699 "config_scan.l"
+#line 1704 "config_scan.l"
 {
    BEGIN(start_ldapservername);
 
@@ -6480,7 +6485,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 229:
 YY_RULE_SETUP
-#line 1706 "config_scan.l"
+#line 1711 "config_scan.l"
 {
    BEGIN(start_ldapgroupname);
 
@@ -6490,7 +6495,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 230:
 YY_RULE_SETUP
-#line 1713 "config_scan.l"
+#line 1718 "config_scan.l"
 {
    BEGIN(start_ldapgroupname);
 
@@ -6500,7 +6505,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 231:
 YY_RULE_SETUP
-#line 1720 "config_scan.l"
+#line 1725 "config_scan.l"
 {
    BEGIN(start_ldapgroupname);
 
@@ -6510,7 +6515,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 232:
 YY_RULE_SETUP
-#line 1727 "config_scan.l"
+#line 1732 "config_scan.l"
 {
    BEGIN(start_ldapkeytabname);
 
@@ -6520,7 +6525,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 233:
 YY_RULE_SETUP
-#line 1734 "config_scan.l"
+#line 1739 "config_scan.l"
 {
    BEGIN(start_ldapkeytabname);
 
@@ -6530,7 +6535,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 234:
 YY_RULE_SETUP
-#line 1741 "config_scan.l"
+#line 1746 "config_scan.l"
 {
    BEGIN(start_pacsidname);
 
@@ -6540,7 +6545,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 235:
 YY_RULE_SETUP
-#line 1748 "config_scan.l"
+#line 1753 "config_scan.l"
 {
    BEGIN(start_pacsidname);
 
@@ -6550,7 +6555,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 236:
 YY_RULE_SETUP
-#line 1755 "config_scan.l"
+#line 1760 "config_scan.l"
 {
    yylval.string = yytext;
    return PACSID_FLAG;
@@ -6558,7 +6563,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 237:
 YY_RULE_SETUP
-#line 1760 "config_scan.l"
+#line 1765 "config_scan.l"
 {
    yylval.string = yytext;
    return BOUNCE;
@@ -6566,7 +6571,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 238:
 YY_RULE_SETUP
-#line 1765 "config_scan.l"
+#line 1770 "config_scan.l"
 {
   BEGIN(start_realmname);
 
@@ -6579,14 +6584,14 @@ YY_RULE_SETUP
   */
 case 239:
 YY_RULE_SETUP
-#line 1776 "config_scan.l"
+#line 1781 "config_scan.l"
 {
    yywarnx_deprecated(yytext, NULL);
 }
 	YY_BREAK
 case 240:
 YY_RULE_SETUP
-#line 1780 "config_scan.l"
+#line 1785 "config_scan.l"
 {
    yywarnx_deprecated(yytext, "timeout.connect");
 
@@ -6596,7 +6601,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 241:
 YY_RULE_SETUP
-#line 1787 "config_scan.l"
+#line 1792 "config_scan.l"
 {
    yywarnx_deprecated(yytext, "timeout.io");
 
@@ -6606,7 +6611,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 242:
 YY_RULE_SETUP
-#line 1794 "config_scan.l"
+#line 1799 "config_scan.l"
 {
    yylval.deprecated.oldname = yytext;
 
@@ -6626,7 +6631,7 @@ YY_RULE_SETUP
     */
 case 243:
 YY_RULE_SETUP
-#line 1813 "config_scan.l"
+#line 1818 "config_scan.l"
 {
    char *ep;
    long long llval;
@@ -6650,7 +6655,7 @@ YY_RULE_SETUP
 /* ignored */
 case 244:
 YY_RULE_SETUP
-#line 1834 "config_scan.l"
+#line 1839 "config_scan.l"
 {
    ;
 }
@@ -6658,7 +6663,7 @@ YY_RULE_SETUP
 /* shell style comment */
 case 245:
 YY_RULE_SETUP
-#line 1839 "config_scan.l"
+#line 1844 "config_scan.l"
 {
    BEGIN(0);
    ;
@@ -6668,7 +6673,7 @@ YY_RULE_SETUP
 case 246:
 /* rule 246 can match eol */
 YY_RULE_SETUP
-#line 1845 "config_scan.l"
+#line 1850 "config_scan.l"
 {
    BEGIN(0);
 }
@@ -6677,14 +6682,14 @@ YY_RULE_SETUP
 case 247:
 /* rule 247 can match eol */
 YY_RULE_SETUP
-#line 1850 "config_scan.l"
+#line 1855 "config_scan.l"
 {
    ;
 }
 	YY_BREAK
 case 248:
 YY_RULE_SETUP
-#line 1854 "config_scan.l"
+#line 1859 "config_scan.l"
 {
    inclientrule = inroute = 0;
 
@@ -6694,7 +6699,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 249:
 YY_RULE_SETUP
-#line 1861 "config_scan.l"
+#line 1866 "config_scan.l"
 {
    yylval.string = yytext;
    return *yytext;
@@ -6702,10 +6707,10 @@ YY_RULE_SETUP
 	YY_BREAK
 case 250:
 YY_RULE_SETUP
-#line 1866 "config_scan.l"
+#line 1871 "config_scan.l"
 ECHO;
 	YY_BREAK
-#line 6707 "config_scan.c"
+#line 6712 "config_scan.c"
 			case YY_STATE_EOF(INITIAL):
 			case YY_STATE_EOF(start_address):
 			case YY_STATE_EOF(start_port):
@@ -7705,7 +7710,7 @@ void yyfree (void * ptr )
 
 #define YYTABLES_NAME "yytables"
 
-#line 1866 "config_scan.l"
+#line 1871 "config_scan.l"
 
 
 static int
@@ -7726,4 +7731,19 @@ shouldresetstate(current_state, next_token)
 
    return 0;
 }
+
+#if !SOCKS_CLIENT
+/* Flex can reach this with no memory or after an input failure.  Keep its
+ * exit status and raw path; JSON uses the allocation-free logger entry. */
+static void
+sockd_lexfatal(const char *message)
+{
+   if (sockscf.logformat == LOGFORMAT_JSON) {
+      const char *msgv[] = { message, NULL };
+      signalslog(LOG_ERR, msgv);
+      exit(2); /* Flex's YY_EXIT_FAILURE. */
+   }
+   yy_fatal_error(message);
+}
+#endif /* !SOCKS_CLIENT */
 

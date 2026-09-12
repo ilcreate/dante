@@ -42,7 +42,10 @@ EXTRA_DIST = tests/README.logformat.md tests/logformat-tests.mk \
    tests/logformat_iolog_test.c tests/logformat_iolog_test.py \
    tests/logformat_iolog_integration_test.py \
    tests/logformat_session_test.c tests/logformat_session_test.py \
-   tests/logformat_session_integration_test.py
+   tests/logformat_session_integration_test.py \
+   tests/logformat_special_test.c tests/logformat_special_test.py \
+   tests/logformat_diagnostic_test.c tests/logformat_diagnostic_test.py \
+   tests/logformat_special_integration_test.py
 
 #use preloading if enabled and possible
 if SERVER_INTERPOSITION

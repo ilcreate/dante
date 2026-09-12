@@ -59,6 +59,11 @@ static const char rcsid[] =
 #define YY_NEVER_INTERACTIVE 1
 #define YY_MAIN 0
 
+#if !SOCKS_CLIENT
+static void sockd_lexfatal(const char *message) __ATTRIBUTE__((noreturn));
+#define YY_FATAL_ERROR(message) sockd_lexfatal(message)
+#endif /* !SOCKS_CLIENT */
+
 #if SOCKS_CLIENT
 /*
  * stuff that is only defined in the server case, but which I don't know
@@ -1882,3 +1887,18 @@ shouldresetstate(current_state, next_token)
 
    return 0;
 }
+
+#if !SOCKS_CLIENT
+/* Flex can reach this with no memory or after an input failure.  Keep its
+ * exit status and raw path; JSON uses the allocation-free logger entry. */
+static void
+sockd_lexfatal(const char *message)
+{
+   if (sockscf.logformat == LOGFORMAT_JSON) {
+      const char *msgv[] = { message, NULL };
+      signalslog(LOG_ERR, msgv);
+      exit(2); /* Flex's YY_EXIT_FAILURE. */
+   }
+   yy_fatal_error(message);
+}
+#endif /* !SOCKS_CLIENT */

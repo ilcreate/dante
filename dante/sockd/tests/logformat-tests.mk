@@ -89,3 +89,17 @@ check-logformat-special: logformat_special_test
 .PHONY: check-logformat-special-integration
 check-logformat-special-integration: sockd
 	python3 $(srcdir)/tests/logformat_special_integration_test.py ./sockd -v
+
+.PHONY: check-logformat-integration
+check-logformat-integration: sockd
+	python3 $(srcdir)/tests/logformat_runtime_integration_test.py ./sockd -v
+
+logformat_benchmark.o: $(srcdir)/tests/logformat_benchmark.c $(srcdir)/../include/logjson.h
+	$(COMPILE) -UNDEBUG -c $(srcdir)/tests/logformat_benchmark.c -o $@
+
+logformat_benchmark: $(filter-out sockd.o,$(sockd_OBJECTS)) logformat_server_test.o logformat_benchmark.o
+	$(LINK) $(filter-out sockd.o,$(sockd_OBJECTS)) logformat_server_test.o logformat_benchmark.o $(sockd_LDADD) $(LIBS)
+
+.PHONY: benchmark-logformat
+benchmark-logformat: logformat_benchmark
+	python3 $(srcdir)/tests/logformat_benchmark.py ./logformat_benchmark

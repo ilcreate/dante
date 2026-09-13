@@ -1,4 +1,4 @@
-# Log format tests (stages 1–5)
+# Log format tests (stages 1–6)
 
 After configuring and building Dante, run from the source root:
 
@@ -29,8 +29,8 @@ python3 sockd/tests/logformat_config_test.py sockd/sockd \
 Configuration tests cover stage 1 and JSON configuration diagnostics from
 stage 2 of `docs/plans/logformat-json.md`. The SIGHUP test observes the mother's
 effective format; child inheritance and configuration copying are checked
-separately by the C driver. It does not observe the format inside an existing
-worker after a live reload.
+separately by the C driver. The stage 6 runtime suite below additionally observes an existing
+worker after live reloads.
 
 Run the serializer and real logger tests after building the server:
 
@@ -50,7 +50,7 @@ cc -std=c99 -Wall -Wextra -Werror -pedantic -fsanitize=address,undefined \
 python3 sockd/tests/logjson_test.py /tmp/dante-logjson-test -v
 ```
 
-`logformat_logger_test.py` checks the actual `log.c` implementation (15 tests),
+`logformat_logger_test.py` checks the actual `log.c` implementation (16 tests),
 with fixed time/PID and replacements only for clock, allocation, write and syslog
 boundaries. It covers all priorities and process roles, typed events, stdout,
 errorlog, stderr fallback (including a failed first logfile open), syslog payload
@@ -177,8 +177,68 @@ are JSON; in signal context a message reports that backtrace is unavailable.
 The existing critical-only signal syslog exception is preserved. See section
 4.5 of the plan for the full contract and limits.
 
-Stages 1–5 are complete. Stage 6 remains: cross-platform CI, the final live
-reload/transport matrix, user documentation and overhead measurements.
+## Final acceptance and CI
+
+Run the complete server acceptance suite from a configured/built tree:
+
+```sh
+bash ci/run-server-tests.sh
+```
+
+This runs all logging suites, statistics API tests and the JSON relay smoke.
+It needs loopback/Unix sockets and process signaling. The default run explicitly
+skips client-library checking and the livedebug-only fatal ring case; cover
+these in their appropriate builds:
+
+```sh
+make -C sockd -f Makefile -f tests/logformat-tests.mk check-logformat-client
+# In a separate --disable-client --enable-livedebug build:
+bash ci/run-server-tests.sh --livedebug
+```
+
+`logformat_runtime_integration_test.py` adds 2 tests (each contains multiple
+phases): raw → JSON → JSON-preserving reload → raw → JSON → directive removal
+while a TCP session stays usable with the same I/O PID; new sessions at each
+phase; and 40 simultaneous UDP associations with at least two I/O workers,
+6 KB payloads, 320 I/O records per transport, file/FIFO/stderr validation and
+errorlog warning routing. Run just these with `check-logformat-integration`.
+The logger suite also tests four concurrent long-record writers to a logfile
+plus errorlog=file or errorlog=pipe, requiring 48 valid objects per recipient.
+
+The targetless UDP snapshot test waits for I/O handoff with bounded status
+probes before requesting its subsequent snapshot. It sends no target traffic.
+Daemon cleanup retries transient process-group EPERM with a finite deadline.
+
+`ci/smoke.py` enables JSON first and uses a dedicated fresh log file. It parses
+every physical log line, validates common fields, relays known bytes in both
+directions, exercises a refused target, and requires structured accept,
+connect, error and matching session-close counters. CLI version output is
+separate. The same smoke runs on packaged Linux and macOS binaries.
+
+`ci/build-package.sh` invokes the server suite after compiling the exported
+release archive on the Linux/macOS package matrix. `packages.yml` separately
+builds the default client libraries and a livedebug server from that same
+archive. `ci/build-test-variant.sh` runs those variant checks. `make distdir`
+also includes parser/scanner, serializer, all logging tests, statistics test
+runner, aggregate server runner and the JSON user documentation.
+
+Measure logger overhead outside CI pass/fail gates:
+
+```sh
+make -C sockd -f Makefile -f tests/logformat-tests.mk logformat_benchmark
+python3 sockd/tests/logformat_benchmark.py sockd/logformat_benchmark
+python3 sockd/tests/logformat_benchmark.py sockd/logformat_benchmark --file /tmp/dante-benchmark.log
+```
+
+The benchmark links real log.o and alternates raw/JSON on identical formatted
+messages and structured session-close events. It checks small output samples
+before timing; seven paired 100,000-event samples follow warmup. `--file`
+appends potentially hundreds of MB; there is no fsync. Results describe logger
+CPU/buffered writes, not SOCKS throughput. See the [acceptance report](../../docs/features/logformat-json/acceptance.md)
+for recorded timings, tested platforms and the actual curl demonstration.
+
+Stages 1–6 are implemented. The complete contract and completion status are in
+[the plan](../../docs/plans/logformat-json.md).
 
 Verified on 2026-09-13, macOS arm64: full server and static/dynamic client builds,
 8 configuration tests, 18 serializer tests (also ASan/UBSan), 15 logger tests,
@@ -197,7 +257,9 @@ iooperation only, empty payload, errno fallback, long payload and allocation
 failure, at fixed time/PID. Earlier stage 2 checks compared ten common logger
 raw scenarios against `f0e827c`. Native hostid and external authentication
 services (GSSAPI/PAM/LDAP) were not exercised; proxy and username metadata were
-checked with the C driver. Linux and a live syslog service were not exercised.
+checked with the C driver. These stage 1–5 runs did not exercise Linux or a live syslog service.
+Stage 6 Linux results are recorded in the acceptance report; syslog remains
+verified at the API boundary, not through an external service.
 
 The shipped parser was regenerated with GNU Bison 3.8.2 and the scanner with
 Apple flex 2.6.4, using the rules in `lib/Makefile.am` and `LC_ALL=C` for the

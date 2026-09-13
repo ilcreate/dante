@@ -286,9 +286,27 @@ socks pass {{
                 self.assertEqual(totals["json"], Counter(accept=1, connect=1)
                                  if logs == "disconnect" else Counter())
 
-    def snapshots(self, daemon, scope, count=1):
+    def snapshots(self, daemon, scope, count=1, await_handoff=False):
         previous = len([e for e in self.records(daemon)
                         if e.get("event") == "session_snapshot" and e.get("scope") == scope])
+        if await_handoff:
+            # UDP's successful reply is sent by the request worker before the
+            # IO worker receives the session. Observe a snapshot to establish
+            # readiness without sending data (the no-target case needs zeros).
+            deadline = time.monotonic() + TIMEOUT
+            next_signal = 0
+            while time.monotonic() < deadline:
+                now = time.monotonic()
+                if now >= next_signal:
+                    os.kill(daemon.proc.pid, signal.SIGUSR1)
+                    next_signal = now + 0.2
+                records = [e for e in self.records(daemon)
+                           if e.get("event") == "session_snapshot" and e.get("scope") == scope]
+                if len(records) >= previous + count:
+                    self.assertFalse([e for e in self.records(daemon) if e["event"] == "session_close"])
+                    return records[previous:]
+                time.sleep(0.025)
+            self.fail("UDP session was not handed to an IO worker:\n" + daemon.text()[-8000:])
         os.kill(daemon.proc.pid, signal.SIGUSR1)
         records = self.wait_events(daemon, "session_snapshot", count=previous + count, scope=scope)
         self.assertFalse([e for e in self.records(daemon) if e["event"] == "session_close"])
@@ -388,8 +406,8 @@ socks pass {{
     def test_udp_snapshot_without_target(self):
         with self.daemon() as (daemon, port):
             with self.udp(port):
-                for _ in range(2):
-                    event = self.snapshots(daemon, "session")[0]
+                for iteration in range(2):
+                    event = self.snapshots(daemon, "session", await_handoff=iteration == 0)[0]
                     self.check_session(event, "session", "udpassociate", "udp")
                     self.assertNotIn("destination", event)
                     # No destination endpoint exists yet, but the native

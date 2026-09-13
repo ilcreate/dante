@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 
 BINARY = str(Path(sys.argv.pop(1)).resolve())
@@ -197,6 +198,54 @@ class LoggerTest(unittest.TestCase):
             for facility in ([syslog.LOG_LOCAL1, syslog.LOG_LOCAL0] if i <= 4 else [syslog.LOG_LOCAL0]):
                 lines.append(f"SYSLOG {facility | i} {level}: level {i}\n\n".encode())
         self.assertEqual(p.stdout, b"".join(lines))
+
+    def test_concurrent_long_file_and_errorlog(self):
+        for error_pipe in (False, True):
+            with self.subTest(error_pipe=error_pipe), tempfile.TemporaryFile(mode="a+b") as output, \
+                    tempfile.TemporaryFile(mode="a+b") as errorfile:
+                processes = []
+                captured = []
+                writefd = None
+                reader = None
+                errfd = errorfile.fileno()
+                if error_pipe:
+                    readfd, writefd = os.pipe()
+                    errfd = writefd
+
+                    def drain():
+                        with os.fdopen(readfd, "rb") as stream:
+                            captured.append(stream.read())
+
+                    reader = threading.Thread(target=drain, daemon=True)
+                    reader.start()
+                try:
+                    for _ in range(4):
+                        processes.append(subprocess.Popen([BINARY, "json", "repeat-routing"],
+                                                          stdout=output, stderr=errfd))
+                    for process in processes:
+                        self.assertEqual(process.wait(timeout=15), 0)
+                finally:
+                    for process in processes:
+                        if process.poll() is None:
+                            process.kill()
+                        process.wait(timeout=5)
+                    if writefd is not None:
+                        os.close(writefd)
+                    if reader:
+                        reader.join(timeout=5)
+                        self.assertFalse(reader.is_alive(), "errorlog reader did not finish")
+                output.seek(0)
+                errorfile.seek(0)
+                streams = (output.read(), captured[0] if error_pipe else errorfile.read())
+                parsed = [self.objects(data) for data in streams]
+                for events in parsed:
+                    self.assertEqual(len(events), 48)
+                    self.assertTrue(all(e["truncated"] and e["level"] == "warning" for e in events))
+                    for sequence in range(12):
+                        self.assertEqual(sum(e["message"].startswith(f"{sequence} ") for e in events), 4)
+                # Concurrent workers may reach recipients in different orders.
+                self.assertEqual(sorted(e["message"] for e in parsed[0]),
+                                 sorted(e["message"] for e in parsed[1]))
 
     def test_raw_fixture(self):
         p = self.run_logger("routing", format="raw")

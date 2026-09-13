@@ -24,7 +24,7 @@ jobs:
       - name: Validate workflows, scripts and release version rules
         run: |
           go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-          shellcheck dante/ci/*.sh dante/ci/packaging/dante-start dante/sockd/tests/run-stats-api-tests.sh
+          shellcheck dante/ci/*.sh dante/ci/packaging/dante-start dante/sockd/tests/run-*.sh
           python3 -m unittest discover -s dante/ci/tests -v
 
   source:
@@ -62,6 +62,42 @@ jobs:
           path: dist/*
           if-no-files-found: error
           retention-days: 14
+
+  build-coverage:
+    needs: [validate, source]
+    name: source-${{ matrix.variant }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [client, livedebug]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-source
+          path: input
+      - name: Build and test source archive
+        env:
+          BUILD_VARIANT: ${{ matrix.variant }}
+          BUILD_IMAGE: debian:12-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171
+        run: |
+          mkdir -p dist
+          docker run --rm \
+            --mount "type=bind,source=$GITHUB_WORKSPACE,target=/repo,readonly" \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/dist,target=/out" \
+            "$BUILD_IMAGE" bash -c \
+            'bash /repo/dante/ci/install-build-deps.sh deb && bash /repo/dante/ci/build-test-variant.sh "$1" /repo/input /out' \
+            bash "$BUILD_VARIANT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: logs-source-${{ matrix.variant }}
+          path: dist/*.log
+          retention-days: 7
 
   package:
     needs: source

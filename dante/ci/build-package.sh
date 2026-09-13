@@ -41,7 +41,7 @@ cp config.log "$output_dir/config.log"
 make -j"${BUILD_JOBS:-2}" > "$output_dir/build.log" 2>&1 || {
   tail -100 "$output_dir/build.log"; exit 1;
 }
-bash sockd/tests/run-stats-api-tests.sh
+bash ci/run-server-tests.sh
 ./sockd/sockd -v
 make DESTDIR="$build_dir/install" install > "$output_dir/install.log" 2>&1
 # Packaging uses an explicit payload: no client libraries from server-only install.

@@ -72,6 +72,20 @@ def reply(sock):
     return status, read_address(sock, atyp)
 
 
+def signal_group(pid, sig):
+    """Darwin may transiently report EPERM while a process group exits."""
+    for attempt in range(20):
+        try:
+            os.killpg(pid, sig)
+            return
+        except ProcessLookupError:
+            return
+        except PermissionError:
+            if attempt == 19:
+                raise
+            time.sleep(0.05)
+
+
 class Daemon:
     def __init__(self, binary, root, config):
         self.path = root / "daemon.log"
@@ -113,31 +127,16 @@ class Daemon:
             time.sleep(0.05)
 
     def close(self):
-        try:
-            os.killpg(self.proc.pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
+        signal_group(self.proc.pid, signal.SIGTERM)
         try:
             self.proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
-            os.killpg(self.proc.pid, signal.SIGKILL)
+            signal_group(self.proc.pid, signal.SIGKILL)
             self.proc.wait(timeout=5)
         finally:
             # The mother may exit before a worker; terminate any remaining group.
             try:
-                for attempt in range(20):
-                    try:
-                        os.killpg(self.proc.pid, signal.SIGKILL)
-                        break
-                    except ProcessLookupError:
-                        break
-                    except PermissionError:
-                        # Darwin can briefly report EPERM while an exiting
-                        # process group is disappearing. Retry finitely; a
-                        # persistent permission failure must still fail cleanup.
-                        if attempt == 19:
-                            raise
-                        time.sleep(0.05)
+                signal_group(self.proc.pid, signal.SIGKILL)
             finally:
                 self.log.close()
 

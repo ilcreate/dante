@@ -141,7 +141,7 @@ if [ -d /run/systemd/system ]; then systemctl daemon-reload; fi
             binaries = list((work / "expanded").rglob("sbin/sockd"))
             if len(binaries) != 1:
                 raise RuntimeError("package must contain exactly one sockd")
-            run(sys.executable, CI / "smoke.py", binaries[0])
+            run(sys.executable, CI / "smoke.py", binaries[0], "--relay")
         else:
             raise ValueError(f"unknown package format: {kind}")
         shutil.copyfile(payload / docs / "build-info.json", output / (artifact.name + ".build-info.json"))

@@ -260,6 +260,57 @@ dropped or not, typically by consulting \fB/etc/hosts.allow\fP and
 before the rule processing starts. The default value is \fBno\fP
 (disabled).
 
+.IP \fBlogformat\fP
+Selects the format of all server logger records: \fBraw\fP (the default)
+or \fBjson\fP.  This global option may appear only once.  Unknown values
+are configuration errors.  It does not apply to the client library.
+
+With \fBlogformat: json\fP, each record in files, stdout and stderr is one
+JSON object followed by one newline.  Newlines within messages are escaped.
+The same format applies to \fBlogoutput\fP and \fBerrorlog\fP; event
+selection, severity filtering and destinations are unchanged.  In particular,
+connection events named \fBerror\fP normally have info severity and are not
+therefore copied to \fBerrorlog\fP, which receives warning and higher severity.
+Syslog receives a JSON object without Dante's text prefix.  The system syslog
+service can add its own header or impose additional size limits.
+
+Place this directive first for JSON configuration diagnostics.  Messages
+before the first activation are raw.  During SIGHUP, the old format remains
+active until the new directive is read.  Omitting the directive restores raw
+after successful parsing.  Workers update asynchronously, so a format change
+can temporarily mix raw and JSON in a shared destination.  Existing error
+handling during configuration reload is unchanged.
+
+Every JSON record has \fBschema_version\fP (integer, currently 1),
+\fBtimestamp\fP (Unix seconds as a string with six fractional digits),
+\fBlevel\fP, \fBpid\fP, \fBprocess\fP, \fBprogram\fP,
+\fBevent\fP, \fBmessage\fP and boolean \fBtruncated\fP.
+General diagnostics use event \fBmessage\fP.  Connection events include
+\fBaccept\fP, \fBconnect\fP, \fBblock\fP, \fBerror\fP,
+\fBdisconnect\fP and \fBio\fP, with known rule, verdict, protocol,
+command and endpoint fields.  Endpoints distinguish local/peer and proxy
+addresses; authentication metadata excludes passwords.
+
+\fBsession_close\fP and \fBsession_snapshot\fP carry numeric byte
+counters and microsecond durations.  UDP also has packet counters.  Snapshots
+are cumulative.  The \fBscope\fP field distinguishes session, control,
+bind_listener and udp_target records; do not sum these scopes as separate
+sessions.  A udp_target aggregates the address-family socket bucket and
+its endpoint is the last known peer.  Unknown fields are omitted; known zeros
+are retained.  Close records include reason and side, and a timeout kind
+where applicable.  TCP_INFO remains text.  Payload requires \fBlog: data\fP.
+
+JSON buffers are bounded.  Oversized messages or optional fields may be
+shortened or omitted with \fBtruncated: true\fP while preserving a valid
+object.  Normal buffers are at most 64 KiB including the terminating NUL;
+allocation failure uses 2 KiB buffers.  Signal messages and debug-buffer
+dumps use 16 KiB buffers.  Pipe/FIFO records also obey the smallest applicable
+PIPE_BUF limit (the POSIX minimum in signal context).  Ordinary stack frames
+are JSON records; signal-context stack traces report that backtrace is
+unavailable.  Large debug dumps can omit the newest entries.  External
+truncation and permanent write failures are not repaired by serialization.
+Help and version output are unchanged.
+
 .IP \fBlogoutput\fP
 This value controls where the server sends logoutput.  It can
 be set to \fBsyslog\fP[/\fBfacility\fP], \fBstdout\fP, \fBstderr\fP,

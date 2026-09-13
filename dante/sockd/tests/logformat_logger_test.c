@@ -72,7 +72,8 @@ int main(int argc, char **argv)
    sockscf.log.filenov = &out;
    memset(longmessage, 'x', sizeof(longmessage) - 1);
    longmessage[sizeof(longmessage) - 1] = '\0';
-   if (strcmp(argv[2], "routing") == 0 || strcmp(argv[2], "routing-long") == 0) {
+   if (strcmp(argv[2], "routing") == 0 || strcmp(argv[2], "routing-long") == 0
+   ||  strcmp(argv[2], "repeat-routing") == 0) {
       sockscf.errlog.type = LOGTYPE_FILE;
       sockscf.errlog.filenoc = 1;
       sockscf.errlog.filenov = &err;
@@ -120,9 +121,10 @@ int main(int argc, char **argv)
       slog(LOG_INFO, "%s", longmessage);
    else if (strcmp(argv[2], "routing-long") == 0 || strcmp(argv[2], "fallback-empty") == 0)
       slog(LOG_WARNING, "%s", longmessage);
-   else if (strcmp(argv[2], "repeat") == 0) {
+   else if (strcmp(argv[2], "repeat") == 0 || strcmp(argv[2], "repeat-routing") == 0) {
       for (i = 0; i < 12; ++i)
-         slog(LOG_INFO, "%d %s", i, longmessage);
+         slog(strcmp(argv[2], "repeat-routing") == 0 ? LOG_WARNING : LOG_INFO,
+              "%d %s", i, longmessage);
    }
    else if (strcmp(argv[2], "rawtext") == 0)
       slog(LOG_WARNING, "quote\" slash\\ newline\n tab\t trailing\n");

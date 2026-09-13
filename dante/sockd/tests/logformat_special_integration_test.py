@@ -14,6 +14,8 @@ import tempfile
 import time
 import unittest
 
+from logformat_iolog_integration_test import signal_group
+
 
 def no_core():
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
@@ -82,19 +84,13 @@ socks pass {{
                     self.wait_text(proc, path, " running")
                     yield proc, path, config, port
                 finally:
-                    try:
-                        os.killpg(proc.pid, signal.SIGTERM)
-                    except ProcessLookupError:
-                        pass
+                    signal_group(proc.pid, signal.SIGTERM)
                     try:
                         proc.wait(timeout=5)
                     except subprocess.TimeoutExpired:
-                        os.killpg(proc.pid, signal.SIGKILL)
+                        signal_group(proc.pid, signal.SIGKILL)
                         proc.wait(timeout=5)
-                    try:
-                        os.killpg(proc.pid, signal.SIGKILL)
-                    except ProcessLookupError:
-                        pass
+                    signal_group(proc.pid, signal.SIGKILL)
 
     def test_start_info_reload_and_shutdown_are_json(self):
         with self.daemon() as (proc, path, config, port):

@@ -45,7 +45,10 @@ EXTRA_DIST = tests/README.logformat.md tests/logformat-tests.mk \
    tests/logformat_session_integration_test.py \
    tests/logformat_special_test.c tests/logformat_special_test.py \
    tests/logformat_diagnostic_test.c tests/logformat_diagnostic_test.py \
-   tests/logformat_special_integration_test.py
+   tests/logformat_special_integration_test.py \
+   tests/logformat_runtime_integration_test.py \
+   tests/logformat_benchmark.c tests/logformat_benchmark.py \
+   tests/run-stats-api-tests.sh tests/stats_api_test.c
 
 #use preloading if enabled and possible
 if SERVER_INTERPOSITION

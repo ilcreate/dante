@@ -26,10 +26,6 @@ class DebianBuildRouteTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/packages.yml").read_text()
         self.assertIn("dist/diagnostics/", workflow)
         self.assertIn("dist/diagnostics/**", workflow)
-        self.assertIn("python3 dante/ci/deb_vm.py", workflow)
-        self.assertIn("timeout-minutes: 120", workflow)
-        self.assertNotIn("path: dist/vm/**\n", workflow)
-        self.assertIn("dist/vm/**/result.json", workflow)
 
     def test_release_asset_names_do_not_collide(self):
         targets = json.loads((CI / "targets.json").read_text())
@@ -39,11 +35,13 @@ class DebianBuildRouteTests(unittest.TestCase):
                 names.append(f'dante-server_1.4.4-1+{target["target"]}_{target["arch"]}.deb')
         self.assertEqual(len(names), len(set(names)))
 
-    def test_release_waits_for_the_reusable_workflow_vm_gate(self):
+    def test_release_waits_for_package_build_without_vm_job(self):
         packages = (ROOT / ".github/workflows/packages.yml").read_text()
         release = (ROOT / ".github/workflows/release.yml").read_text()
-        self.assertIn("  verify-deb:\n", packages)
-        self.assertIn("    needs: [source, package]\n", packages)
+        self.assertNotIn("  verify-deb:\n", packages)
+        self.assertNotIn("deb_matrix", packages)
+        self.assertNotIn("python3 dante/ci/deb_vm.py", packages)
+        self.assertIn("  package:\n    needs: source\n", packages)
         self.assertIn("  draft:\n    needs: build\n", release)
 
 

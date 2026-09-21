@@ -3,6 +3,11 @@
 Source: [approved implementation plan](debian-package-compatibility.md).
 Operational instructions: [Debian and Ubuntu packages](../debian-packages.md).
 
+Subsequent CI policy change: at the owner's request, `verify-deb` and its VM
+matrix were removed from the shared workflow to shorten releases. VM tools
+remain available for manual checks. The evidence below records the original
+implementation; VM execution is no longer a release requirement.
+
 ## Scope and user journeys
 
 - Upgrade a distribution `dante-server` without changing its binary, service,
@@ -124,4 +129,4 @@ At the user's request, further runtime investigation stopped and work was
 concluded with CI/CD validation and a squash commit. No C runtime sources changed.
 The complete Ubuntu VM upgrade flow, amd64 native/VM targets, RPM/macOS builds,
 and the remote GitHub Actions matrix were not executed locally. The release
-workflow retains its four-target VM gate; local unit checks do not replace it.
+workflow now requires validation and package builds only; VM checks are manual.

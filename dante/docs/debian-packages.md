@@ -110,10 +110,10 @@ local configuration. Restore saved configuration or policy only if it changed,
 then restore the previously recorded service state. Validate configuration,
 PAM authentication, and relay traffic again. Downgrades also interrupt sessions.
 
-CI tests the distribution-to-candidate upgrade and rollback in a disposable
-VM with real systemd; unit tests alone do not establish this compatibility.
-Consult the task's TDD evidence report for which environments were actually
-executed during development.
+Upgrade and rollback checks in a disposable VM with real systemd are optional
+manual checks via `dante/ci/deb_vm.py`; they are not run by the CI or release
+workflows. Releases wait for validation and package builds. Consult the task's
+TDD evidence report for environments actually executed during development.
 
 ## Previously published custom sockd packages
 

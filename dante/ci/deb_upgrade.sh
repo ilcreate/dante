@@ -18,7 +18,9 @@ guard_vm() {
     [ -f /etc/dante-ci-disposable ] || fail "disposable VM file marker is missing"
     [ "$(cat /proc/1/comm)" = systemd ] || fail "PID 1 is not systemd"
     virt=$(systemd-detect-virt --vm 2>/dev/null || true)
-    [ -n "$virt" ] && [ "$virt" != none ] || fail "guest is not a virtual machine"
+    if [ -z "$virt" ] || [ "$virt" = none ]; then
+        fail "guest is not a virtual machine"
+    fi
 }
 
 record() {

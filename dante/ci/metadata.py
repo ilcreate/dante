@@ -5,6 +5,8 @@ import argparse
 import json
 import re
 import subprocess
+import tarfile
+import tempfile
 from pathlib import Path
 
 
@@ -25,6 +27,52 @@ def identity(upstream, tag, run_number, commit):
             "source": f"dante-{upstream}-{revision}.tar.gz"}
 
 
+DEBIAN_TARGETS = {"ubuntu22.04", "debian12"}
+
+
+def package_version_for_target(data, target):
+    if target not in DEBIAN_TARGETS:
+        raise ValueError(f"unknown Debian target: {target}")
+    return f"{data['package_version']}+{target}"
+
+
+def select_targets(targets, full_matrix):
+    if full_matrix:
+        return targets
+    selected = [target for target in targets if target.get("format") == "deb"]
+    expected = {(target, arch) for target in DEBIAN_TARGETS for arch in ("amd64", "arm64")}
+    actual = {(target.get("target"), target.get("arch")) for target in selected}
+    if actual != expected:
+        raise ValueError(f"Debian PR matrix mismatch: expected={expected}, actual={actual}")
+    return selected
+
+
+def export_source(root, archive, version, commit):
+    """Export upstream and Debian packaging from the same committed tree."""
+    prefix = f"dante-{version}"
+    with tempfile.TemporaryDirectory(prefix="dante-source-") as directory:
+        temporary = Path(directory)
+        upstream_tar = temporary / "upstream.tar"
+        debian_tar = temporary / "debian.tar"
+        subprocess.run(
+            ["git", "-C", str(root), "archive", "--format=tar",
+             f"--output={upstream_tar}", f"{commit}:dante"],
+            check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(root), "archive", "--format=tar",
+             f"--output={debian_tar}", f"{commit}:debian"],
+            check=True,
+        )
+        with tarfile.open(archive, "w:gz") as output:
+            for source_path, nested in ((upstream_tar, ""), (debian_tar, "debian")):
+                with tarfile.open(source_path, "r:") as source:
+                    for member in source.getmembers():
+                        member.name = "/".join(part for part in (prefix, nested, member.name) if part)
+                        payload = source.extractfile(member) if member.isfile() else None
+                        output.addfile(member, payload)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repository", type=Path, default=Path.cwd())
@@ -38,17 +86,15 @@ def main():
         return subprocess.check_output(["git", "-C", str(root), *arguments])
 
     commit = git("rev-parse", "HEAD").decode().strip()
-    config = git("show", "HEAD:dante/configure.ac").decode()
+    config = git("show", f"{commit}:dante/configure.ac").decode()
     upstream = re.search(r"^version=(\S+)$", config, re.M)[1]
     data = identity(upstream, args.tag, args.run_number, commit)
     if args.tag and git("rev-parse", f"refs/tags/{args.tag}^{{commit}}").decode().strip() != commit:
         raise ValueError("release tag does not identify the checked-out commit")
     args.output.mkdir(parents=True, exist_ok=True)
     archive = args.output / data["source"]
-    # Only committed files; no local findings, build outputs or working-tree files.
-    subprocess.run(["git", "-C", str(root), "archive", "--format=tar.gz",
-                    f"--prefix=dante-{data['version']}/", f"--output={archive.resolve()}",
-                    "HEAD:dante"], check=True)
+    # Only committed files; both trees come from the exact commit validated above.
+    export_source(root, archive.resolve(), data["version"], commit)
     (args.output / "build-metadata.json").write_text(json.dumps(data, indent=2) + "\n")
     print(json.dumps(data, indent=2))
 

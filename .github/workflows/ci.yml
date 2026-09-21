@@ -17,5 +17,5 @@ jobs:
   packages:
     uses: ./.github/workflows/packages.yml
     with:
-      # Fast Debian amd64 check for PRs; all six targets on branch push/manual run.
+      # All distro-compatible DEBs on PRs; the complete native matrix otherwise.
       full_matrix: ${{ github.event_name != 'pull_request' }}

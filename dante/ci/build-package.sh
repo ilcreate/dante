@@ -1,11 +1,15 @@
 #!/bin/bash
 # Build in a disposable directory, always from the release source archive.
 set -euo pipefail
-format=${1:?usage: build-package.sh deb|rpm|macos INPUT_DIR OUTPUT_DIR}
+format=${1:?usage: build-package.sh deb|rpm|macos INPUT_DIR OUTPUT_DIR [DEB_TARGET]}
 input_dir=$(cd "${2:?}" && pwd)
 mkdir -p "${3:?}"
 output_dir=$(cd "$3" && pwd)
 ci_dir=$(cd "$(dirname "$0")" && pwd)
+if [[ "$format" == deb ]]; then
+  target=${4:?Debian builds require ubuntu22.04 or debian12}
+  exec bash "$ci_dir/build-deb.sh" "$input_dir" "$output_dir" "$target"
+fi
 build_dir=$(mktemp -d "${TMPDIR:-/tmp}/dante-package.XXXXXX")
 trap 'rm -rf "$build_dir"' EXIT
 source_name=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["source"])' "$input_dir/build-metadata.json")
@@ -15,7 +19,7 @@ source_dir="$build_dir/dante-$version"
 cd "$source_dir"
 
 case "$format" in
-  deb|rpm) prefix=/usr; conf=/etc/sockd.conf; pid=/run/sockd/sockd.pid ;;
+  rpm) prefix=/usr; conf=/etc/sockd.conf; pid=/run/sockd/sockd.pid ;;
   macos)
     prefix=/usr/local; conf=/usr/local/etc/sockd.conf; pid=/var/run/sockd.pid
     # Do not accidentally link the distributable to Homebrew libraries.

@@ -1,0 +1,220 @@
+Description: Rename the libdsocks library to avoid a conflict with libsocks4.
+Bug-Debian: https://bugs.debian.org/52475
+Author: Adrian Bridgett <bridgett@debian.org>
+Forwarded: not-needed
+Last-Update: 2016-04-05
+
+--- a/bin/socksify.in
++++ b/bin/socksify.in
+@@ -72,7 +72,7 @@
+ 
+ #dlib/Makefile.am libtool flags should produce a predictable library name
+ #(ending in SOLIB_POSTFIX).
+-LIBRARY="${SOCKS_LIBRARY:-${FULLPATH}libdsocks.@SOLIB_POSTFIX@}"
++LIBRARY="${SOCKS_LIBRARY:-${FULLPATH}libdsocksd.@SOLIB_POSTFIX@}"
+ 
+ #platform dependent LD_PRELOAD-variant format
+ PRELOAD_SEPERATOR="@PRELOAD_SEPERATOR@"
+--- a/dlib/Makefile.am
++++ b/dlib/Makefile.am
+@@ -1,8 +1,8 @@
+-lib_LTLIBRARIES = libdsocks.la
++lib_LTLIBRARIES = libdsocksd.la
+ #NOTE: file additions below also need to be added to dlib64/Makefile.am
+ #the interposition.c file is compiled first as it historically has had
+ #most compile problems.
+-libdsocks_la_SOURCES = interposition.c int_osf1.c int_osf2.c int_osf3.c \
++libdsocksd_la_SOURCES = interposition.c int_osf1.c int_osf2.c int_osf3.c \
+    ../lib/Raccept.c ../lib/Rbind.c ../lib/Rbindresvport.c               \
+    ../lib/Rcompat.c ../lib/Rconnect.c ../lib/Rgethostbyname.c           \
+    ../lib/Rgetpeername.c ../lib/Rgetsockname.c ../lib/Rgetsockopt.c     \
+@@ -21,19 +21,19 @@
+    ../lib/util.c
+ 
+ #libscompat - files common for both client and server
+-EXTRA_libdsocks_la_SOURCES = ../libscompat/getifaddrs.c \
++EXTRA_libdsocksd_la_SOURCES = ../libscompat/getifaddrs.c \
+    ../libscompat/hstrerror.c ../libscompat/inet_ntoa.c  \
+    ../libscompat/inet_pton.c ../libscompat/memmove.c    \
+    ../libscompat/pselect.c ../libscompat/setproctitle.c \
+    ../libscompat/strlcpy.c ../libscompat/strvis.c       \
+    ../libscompat/vsyslog.c
+ #libscompat - files only used by client
+-EXTRA_libdsocks_la_SOURCES += ../libscompat/issetugid.c
++EXTRA_libdsocksd_la_SOURCES += ../libscompat/issetugid.c
+ 
+-libdsocks_la_LDFLAGS = -avoid-version -all-dynamic @MAPOPT@
+-libdsocks_la_LIBADD = @LIBDSCSRC@ @DLIBDEPS@ @LIBSCOMPAT@
+-libdsocks_la_DEPENDENCIES = Makefile.am _reconf @LIBDSCSRC@
+-libdsocks_la_LIBTOOLFLAGS = --tag=disable-static
++libdsocksd_la_LDFLAGS = -avoid-version -all-dynamic @MAPOPT@
++libdsocksd_la_LIBADD = @LIBDSCSRC@ @DLIBDEPS@ @LIBSCOMPAT@
++libdsocksd_la_DEPENDENCIES = Makefile.am _reconf @LIBDSCSRC@
++libdsocksd_la_LIBTOOLFLAGS = --tag=disable-static
+ 
+ INCLUDES = -I$(top_srcdir)/include -I$(top_srcdir)/libscompat \
+ 	   -I$(top_srcdir)/lib
+@@ -52,10 +52,10 @@
+ 
+ if RUNLINT
+ SUFFIXES = .ln
+-LINTFILESa = $(libdsocks_la_SOURCES:.c=.ln)
++LINTFILESa = $(libdsocksd_la_SOURCES:.c=.ln)
+ LINTFILESb = $(LINTFILESa:.y=.ln)
+ LINTFILES = $(LINTFILESb:.l=.ln)
+-libdsocks_la_DEPENDENCIES += $(LINTFILES) llib-ldsocks.ln
++libdsocksd_la_DEPENDENCIES += $(LINTFILES) llib-ldsocks.ln
+ 
+ CLEANFILES = $(LINTFILES)
+ 
+--- a/dlib/int_osf3.c
++++ b/dlib/int_osf3.c
+@@ -81,7 +81,7 @@
+ #undef sendto
+ 
+ /* XXX Attempt to support old library calls, which use old version of
+-   sockaddr and msghdr struct. Other parts of libdsocks are compiled
++   sockaddr and msghdr struct. Other parts of libdsocksd are compiled
+    using the new versions. */
+ 
+ /* sockaddr struct, with sa_len */
+--- a/doc/README.socksify
++++ b/doc/README.socksify
+@@ -2,7 +2,7 @@
+ 
+ The shell script socksify in the bin directory is meant to aid in
+ using socks with already compiled dynamic binaries.  This works by
+-setting the LD_PRELOAD environment variable to libdsocks.  It will
++setting the LD_PRELOAD environment variable to libdsocksd.  It will
+ then wrap all networking-related system calls.
+ 
+ When used the script can socksify a program by simply giving it as a
+--- a/doc/README.usage
++++ b/doc/README.usage
+@@ -7,15 +7,15 @@
+ 	The simplest way to add socks support to an already
+ (dynamically) complied application is to use the LD_PRELOAD facility
+ to replace the standard library functions with socksified ones.  The
+-libdsocks library is provided for this purpose.  See the
++libdsocksd library is provided for this purpose.  See the
+ README.socksify file for more information.  This will probably only
+ work with non-setuid applications since LD_PRELOAD is usually ignored
+ otherwise.  If setting LD_PRELOAD is not possible, compilation is
+ another possibility.
+ 
+ 	If the application can be compiled dynamically socks support
+-can be added explicitly by linking with libdsocks (usually done by adding
+-'-ldsocks').  This will automagically give the application socks
++can be added explicitly by linking with libdsocksd (usually done by adding
++'-ldsocksd').  This will automagically give the application socks
+ support without making any code changes.
+ 
+ Static Compilation
+@@ -24,8 +24,8 @@
+ changed to use socks, even if it is not linked dynamically.
+ Several system calls and library calls must be changed to use the
+ socksified versions instead of the standard ones.  The application
+-is then linked with the libsocks library in the distribution (-lsocks,
+-not -ldsocks).
++is then linked with the libsocks library in the distribution (-lsocksd,
++not -ldsocksd).
+ 
+ These function calls can be found in the socks library:
+ Raccept
+@@ -71,6 +71,6 @@
+ Libraries
+ 	In total there are three libraries distributed with this package:
+ 
+- libsocks.so  - standard shared library, contains Rfoo type functions.
+- libsocks.a   - static version of the above.
+- libdsocks.so - shared library which does "on the fly" socksification.
++ libsocksd.so  - standard shared library, contains Rfoo type functions.
++ libsocksd.a   - static version of the above.
++ libdsocksd.so - shared library which does "on the fly" socksification.
+--- a/include/socks.h
++++ b/include/socks.h
+@@ -479,7 +479,7 @@
+ typedef sigset_t addrlockopaque_t;
+ 
+ /*
+- * libsocks function declarations
++ * libsocksd function declarations
+  */
+ 
+ void __ATTRIBUTE__((ATTRIBUTE_CONSTRUCTOR))
+--- a/lib/Makefile.am
++++ b/lib/Makefile.am
+@@ -1,7 +1,7 @@
+-lib_LTLIBRARIES = libsocks.la
++lib_LTLIBRARIES = libsocksd.la
+ #config_parse/scan compiled first to get yacc/lex run as early as possible
+ #(other dirs rely on yacc/lex being run here).
+-libsocks_la_SOURCES = config_parse.c config_scan.c                      \
++libsocksd_la_SOURCES = config_parse.c config_scan.c                      \
+    Raccept.c Rbind.c Rbindresvport.c Rcompat.c Rconnect.c               \
+    Rgethostbyname.c Rgetpeername.c Rgetsockname.c Rgetsockopt.c         \
+    Rlisten.c Rrresvport.c address.c addressmatch.c authneg.c broken.c   \
+@@ -13,20 +13,20 @@
+    upnp.c userio.c util.c
+ 
+ #libscompat - files common for both client and server
+-EXTRA_libsocks_la_SOURCES = ../libscompat/getifaddrs.c  \
++EXTRA_libsocksd_la_SOURCES = ../libscompat/getifaddrs.c  \
+    ../libscompat/hstrerror.c ../libscompat/inet_ntoa.c  \
+    ../libscompat/inet_pton.c ../libscompat/memmove.c    \
+    ../libscompat/pselect.c ../libscompat/setproctitle.c \
+    ../libscompat/strlcpy.c ../libscompat/strvis.c       \
+    ../libscompat/vsyslog.c
+ #libscompat - files only used by client
+-EXTRA_libsocks_la_SOURCES += ../libscompat/issetugid.c
++EXTRA_libsocksd_la_SOURCES += ../libscompat/issetugid.c
+ 
+-#libsocks version info, interfaceversion:revision:old interfaces supported
++#libsocksd version info, interfaceversion:revision:old interfaces supported
+ #XXX SPEC/dante.spec.in must have the same value as version info
+-libsocks_la_LDFLAGS = -version-info 1:1:1 @MAPOPT@
+-libsocks_la_LIBADD = @LIBSCSRC@ @DLIBDEPS@ @LIBSCOMPAT@
+-libsocks_la_DEPENDENCIES = Makefile.am _reconf @LIBSCSRC@
++libsocksd_la_LDFLAGS = -version-info 1:1:1 @MAPOPT@
++libsocksd_la_LIBADD = @LIBSCSRC@ @DLIBDEPS@ @LIBSCOMPAT@
++libsocksd_la_DEPENDENCIES = Makefile.am _reconf @LIBSCSRC@
+ 
+ INCLUDES = -I$(top_srcdir)/include -I$(top_srcdir)/libscompat
+ 
+@@ -51,9 +51,9 @@
+ 	@echo CPPFLAGS=\"$(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(CPPFLAGS)\"
+ 	@echo LDFLAGS=\"$(LDFLAGS)\"
+ 	@echo LIBS=\"$(LIBS) $(DLIBDEPS)\"
+-	@echo AMSRC=\"$(libsocks_la_SOURCES)\"
+-#	@echo AMOBJ=\"$(libsocks_la_OBJECTS)\"
+-	@echo AMOPTSRC=\"$(EXTRA_libsocks_la_SOURCES)\"
++	@echo AMSRC=\"$(libsocksd_la_SOURCES)\"
++#	@echo AMOBJ=\"$(libsocksd_la_OBJECTS)\"
++	@echo AMOPTSRC=\"$(EXTRA_libsocksd_la_SOURCES)\"
+ 	@echo AMOPTOBJ=\"@LIBSCSRC@\"
+ 
+ PREFIX = socks_yy
+@@ -100,10 +100,10 @@
+ 
+ if RUNLINT
+ SUFFIXES = .ln
+-LINTFILESa = $(libsocks_la_SOURCES:.c=.ln)
++LINTFILESa = $(libsocksd_la_SOURCES:.c=.ln)
+ LINTFILESb = $(LINTFILESa:.y=.ln)
+ LINTFILES = $(LINTFILESb:.l=.ln)
+-libsocks_la_DEPENDENCIES += $(LINTFILES) llib-lsocks.ln
++libsocksd_la_DEPENDENCIES += $(LINTFILES) llib-lsocks.ln
+ 
+ CLEANFILES = $(LINTFILES)
+ 
+--- a/libscompat.m4
++++ b/libscompat.m4
+@@ -227,7 +227,7 @@
+     fi
+     if eval "test x\"\$${var}\" = xno"; then
+ 	LIBSCSRC="${LIBSCSRC}${LIBSCSRC:+ }${func}.lo"
+-	LIBDSCSRC="${LIBDSCSRC}${LIBDSCSRC:+ }libdsocks_la-${func}.lo"
++	LIBDSCSRC="${LIBDSCSRC}${LIBDSCSRC:+ }libdsocksd_la-${func}.lo"
+ 	COMPATFUNCS="$COMPATFUNCS${COMPATFUNCS:+ }$func"
+     fi
+ done

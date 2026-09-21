@@ -1,1 +1,1 @@
-usr/lib/libsocksd.so.* usr/lib
+usr/lib/*/libsocksd.so.*

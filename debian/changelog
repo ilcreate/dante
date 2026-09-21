@@ -1,97 +1,324 @@
-dante (1.4.1-1) trusty; urgency=low
+dante (1.4.2+dfsg-7) unstable; urgency=medium
 
-  * Imported Upstream version 1.4.1
-  * Update debian/patches after git-import-orig.
+  * Run dpkg-gensymbols with -c4 for more stringent checks.
+  * Drop Breaks/Replaces satisfied in oldstable.
+  * Fix a use-after-free bug in the config parsing.
+  * Use the test-name autopkgtest feature.
+  * Add a trivial git-buildpackage config file.
+  * Bump Standards-Version to 4.4.0 with no changes.
+  * Mark the /lib64 directory as optional in the danted service file.
+    Closes: #932169
+  * Mark the adequate test as superficial.
+  * Correct another typographical error.
 
- -- Darik Horn <dajhorn@vanadac.com>  Thu, 23 Oct 2014 20:18:58 -0400
+ -- Peter Pentchev <roam@debian.org>  Thu, 12 Sep 2019 14:17:28 +0300
 
-dante (1.4.0-1) trusty; urgency=medium
+dante (1.4.2+dfsg-6) unstable; urgency=medium
 
-  * Imported Upstream version 1.4.0
-  * Refresh debian/patches after git-import-dsc.
-  * Update dh_installdocs.
-  * Update libdsocksd0.install for unversioned library.
-  * Promote debian/control standards version.
-  * Cease symbol tracking.
+  * Use a wildcard in debian/not-installed instead of hardcoding
+    the x86_64-linux-gnu multiarch triplet, thus fixing the FTBFS on
+    any other architecture.  Closes: #918355
 
- -- Darik Horn <dajhorn@vanadac.com>  Tue, 26 Aug 2014 17:54:01 -0400
+ -- Peter Pentchev <roam@debian.org>  Sat, 05 Jan 2019 16:23:14 +0200
 
-dante (1.1.19.dfsg-3ubuntu11) trusty; urgency=medium
+dante (1.4.2+dfsg-5) unstable; urgency=medium
 
-  * No-change rebuild against eglibc 2.19.
+  * Bump the debhelper compatibility level to 12 with no changes.
+  * Add ${misc:Pre-Depends} to dante-server.
+  * Declare compliance with Debian Policy 4.3.0 with no changes.
+  * Move away from git-dpm.
+  * Add the year 2019 to my debian/* copyright notice.
+  * Run dh_missing with the --fail-missing option and create
+    the debian/not-installed file listing some files that we modify
+    and install manually.
 
- -- Adam Conrad <adconrad@ubuntu.com>  Mon, 24 Feb 2014 15:55:17 -0700
+ -- Peter Pentchev <roam@debian.org>  Fri, 04 Jan 2019 23:54:23 +0200
 
-dante (1.1.19.dfsg-3ubuntu10) trusty; urgency=medium
+dante (1.4.2+dfsg-4) unstable; urgency=medium
 
-  * Rebuild against eglibc 2.18.
+  * Drop "--without systemd" from the dh invocation, missed in
+    the upgrade to debhelper compat level 11.  Closes: #907889
+  * Specify Build-Depends-Package in the libsocksd0 symbols file and
+    add a Lintian override for libdsocksd0.
+  * Enable some systemd hardening options and add a news blurb on
+    disabling/customizing them.
+  * Move the systemd pid file from /var/run to /run.
+  * Change the systemd service type to "simple" and do not pass "-D".
 
- -- Colin Watson <cjwatson@ubuntu.com>  Mon, 03 Feb 2014 13:16:07 +0000
+ -- Peter Pentchev <roam@debian.org>  Mon, 17 Dec 2018 18:01:57 +0200
 
-dante (1.1.19.dfsg-3ubuntu9) saucy; urgency=low
+dante (1.4.2+dfsg-3) unstable; urgency=medium
 
-  * debian/patches/03-configure.patch
-    - Revert hardcoded libdl.so path
-  * debian/patches/15-fixlibc-search.patch
-    - Fix dante-server using the wrong libc.so (LP: #816153)
-      by changing the search patch for the libc.so
-  * debian/patches/16-fix-dlopen.patch
-    - Fix socksify fails to run (LP: #857598)
-      by adding search logic to locate the proper libdl.so
+  * Add two more fixes to the typos patch.
+  * Add the year 2018 to my debian/* copyright notice.
+  * Use my Debian e-mail address.
+  * Bring up to compliance with Debian Policy 4.2.1:
+    - use uscan's "repack" mechanism along with Files-Excluded in
+      the copyright file
+    - install the upstream release notes (NEWS) as NEWS and not changelog
+  * Bump the debhelper compatibility level to 11:
+    - override the dh_installsystemd invocation to rename the service file
+    - use the B-D: debheper-compat (= 11) mechanism
+  * Rename the SysV init script file in the source package to follow
+    suit with the systemd one.
+  * Add a trivial autopkgtest running adequate on the installed package.
 
- -- Louis Bouchard <louis.bouchard@ubuntu.com>  Wed, 12 Jul 2013 14:39:18 +0200
+ -- Peter Pentchev <roam@debian.org>  Thu, 30 Aug 2018 14:45:37 +0300
 
-dante (1.1.19.dfsg-3ubuntu8) raring; urgency=low
+dante (1.4.2+dfsg-2) unstable; urgency=medium
 
-  * No-change rebuild to update the dependency on the current libc6.
+  * Remove trailing whitespace from the changelog and control files.
+  * Declare compliance with Debian Policy 4.1.1 with no changes.
+  * Add "Rules-Requires-Root: no" to the source control stanza.
+  * Switch to git-dpm for patch management and rename the patches.
 
- -- Adam Conrad <adconrad@ubuntu.com>  Mon, 28 Jan 2013 09:26:57 -0700
+ -- Peter Pentchev <roam@ringlet.net>  Mon, 30 Oct 2017 01:08:23 +0200
 
-dante (1.1.19.dfsg-3ubuntu7) raring; urgency=low
+dante (1.4.2+dfsg-1) unstable; urgency=medium
 
-  * No-change rebuild to update the current dependency on libc6.
+  * Declare compliance with Debian Policy 4.1.0:
+    - implement the "try-restart" command in the init script; also fix
+      the behavior of the "restart" command when the daemon was stopped
+  * New upstream version:
+    - update the 19-standards patch, half of it was integrated upstream
+    - drop the 23-sa-len-unused and 24-uintptr_t patches, fixed upstream
+    - refresh several patches
+    - add Rgetnameinfo to the symbols file
+    - update the upstream copyright years
 
- -- Adam Conrad <adconrad@ubuntu.com>  Sat, 27 Oct 2012 02:11:33 +0100
+ -- Peter Pentchev <roam@ringlet.net>  Wed, 27 Sep 2017 14:12:52 +0300
 
-dante (1.1.19.dfsg-3ubuntu6) precise; urgency=low
+dante (1.4.1+dfsg-5) unstable; urgency=medium
 
-  * No-change rebuild against current pkgbinarymangler to fix broken
-    md5sums. (see LP #875466)
+  * Add an error handler to the post-install startup of dante-server so
+    that it doesn't make the package installation fail if danted.conf
+    has not been customized yet (i.e. always on first installation).
+    Closes: #862988
 
- -- Martin Pitt <martin.pitt@ubuntu.com>  Wed, 29 Feb 2012 08:29:20 +0100
+ -- Peter Pentchev <roam@ringlet.net>  Sun, 21 May 2017 17:23:27 +0300
 
-dante (1.1.19.dfsg-3ubuntu5) oneiric; urgency=low
+dante (1.4.1+dfsg-4) unstable; urgency=medium
 
-  * No-change rebuild to update the dependency on libc6 (LP: #767085).
+  * Add the 25-path-max patch as a temporary band-aid for building Dante
+    on GNU/Hurd.
 
- -- Stéphane Graber <stgraber@ubuntu.com>  Tue, 17 May 2011 09:18:25 -0400
+ -- Peter Pentchev <roam@ringlet.net>  Thu, 12 Jan 2017 13:07:24 +0200
 
-dante (1.1.19.dfsg-3ubuntu4) maverick; urgency=low
+dante (1.4.1+dfsg-3) unstable; urgency=medium
 
-  * No-change rebuild to update the dependency on libc6 (LP: #624425).
+  * Add some more fixes to the 20-typos patch.
+  * Fix the formatting of multiple DEP-3 Author headers in a patch.
+  * Add a systemd service file (originally obtained from Arch Linux,
+    almost completely overhauled).
+  * Switch to the compat level 10 default debhelper behavior regarding
+    restarting services during an upgrade - only restarting the service
+    after the upgrade.
+  * Correct the number of the Debian bug in the 01-rename-library patch.
+  * Point the watch file to the main upstream website.
+  * Use the HTTPS scheme for various upstream and Debian-related URLs.
+  * Build-depend on debhelper 10 now that it's even in jessie-backports
+    and drop the Lintian override.
+  * Let dante-server depend on lsb-base for the init script functions.
+  * Use single quotes around a variable that is interpolated by make,
+    not by the shell, in the rules file.
+  * Use the v4 substitution variables in the watch file.
+  * Add the 24-uintptr_t patch to fix the build on !linux i386 hosts.
+    Closes: #845404; thanks, Samuel Thibault!
+  * Rename the 22-sigpwr-siginfo patch to 22-signal-names, simplify it
+    a bit, and also check for SIGPWR == SIGLOST.
+  * Bump the year on my debian/* copyright notice.
 
- -- Stefan Potyra <sistpoty@ubuntu.com>  Fri, 03 Sep 2010 12:47:09 +0200
+ -- Peter Pentchev <roam@ringlet.net>  Mon, 09 Jan 2017 17:28:22 +0200
 
-dante (1.1.19.dfsg-3ubuntu3) lucid; urgency=low
+dante (1.4.1+dfsg-2) unstable; urgency=medium
 
-  * No-change rebuild to update the dependency on libc6 
+  * Add the 21-sendbuf-ioctl, 22-sigpwr-siginfo, and 23-sa-len-unused
+    patches to fix some FTBFS's on the Debian buildd network.
+  * Update the watch file a bit:
+    - fix the dversionmangle pattern to remove "+dfsg" instead of
+      the ".dfsg" used a long, long time ago.
+    - point it to a webpage with links instead of an FTP site
+    - update to version 4 and explicitly add pgpmode=none
 
- -- Matthias Klose <doko@ubuntu.com>  Mon, 18 Jan 2010 16:06:10 +0100
+ -- Peter Pentchev <roam@ringlet.net>  Mon, 18 Apr 2016 17:34:55 +0300
 
-dante (1.1.19.dfsg-3ubuntu2) karmic; urgency=low
+dante (1.4.1+dfsg-1) unstable; urgency=medium
 
-  * No-change rebuild to update the dependency on libc6 
+  * Fix FTBFS by depending on libtool-bin instead of libtool.
+    Closes: #776907
+  * Remove the obsolete DM-Upload-Allowed source control field.
+  * Note the migration to my GitLab repository in the Vcs-* fields.
+  * Use the default dpkg-dev source package compression method.
+  * Drop the versions from the autotools-dev and dpkg-dev dependencies.
+  * Fix the broken .so symlink in libsocksd0-dev.  Closes: #715117
+  * Bump the debhelper compatibility level to 10:
+    - install into the multiarch library directory
+    - get the compiler and linker flags directly from debhelper
+    - override the "experimental debhelper version" Lintian warning
+    - drop the autotools-dev dependency and invocation, debhelper uses
+      autoreconf automatically in level 10; do not override the Lintian
+      "outdated autotools file" warnings, since it's wrong - see #820441
+  * New upstream version:
+    - Closes: #740749 (new upstream version)
+    - Closes: #731178 (tries to dlopen a linker script)
+    - rework some of the patches to modify the *.am files instead of
+      the *.in ones; Closes: #716681
+    - add a lot more filenames to debian/clean
+    - put the preloaded libdsocksd back into its own package, complete
+      with a SONAME, in preparation for socksify being able to select
+      the one with the correct ABI/architecture; drop the 15-lib-dante-client
+      patch that is no longer applicable
+    - update the libsocksd0 symbols file - all the internal symbols were
+      dropped from the public interface; this should cause no trouble,
+      since none of these should ever have been used by anything external.
+      Closes: #626316
+    - drop the no longer shipped TODO doc file
+    - update the patches
+    - drop the 07-rconnect patch, it seems to be handled upstream
+    - drop the 13-c-warnings patch, it was integrated upstream
+    - drop the check for PTHREAD_MUTEX_ERRORCHECK, we really need it; if it
+      turns out not to be available on some architectures, we'll figure out
+      ways around that
+    - update the upstream copyright information
+  * Add Multi-Arch headers to the binary packages.
+  * Add the 18-dante-client-multiarch patch:
+    - build and install libdsocksd0 as a fully-versioned library
+    - teach socksify to only put the library names, no full paths, into
+      the LD_PRELOAD environment variable, and leave the runtime loader to
+      figure out which version (ABI, multiarch, etc) of the library to use
+    - make dante-client an architecture-independent package since all
+      the arch-dependent binaries are now in the libdsocksd0 one
+    - Closes: #656096
+  * Add the 19-standards patch to add _DEFAULT_SOURCE to the _BSD_SOURCE
+    definition that is declared obsolete in recent libc versions; also,
+    add *-gnu to the triplets mask to include kFreeBSD and the Hurd.
+  * Declare compliance with Debian Policy 3.9.8:
+    - update the copyright file to the 1.0 format
+  * Add the 21-typos patch to fix some typographical and grammatical errors.
+  * Bring dante-server's danted.init script up to date:
+    - add an LSB Description
+    - source the LSB init-functions file
+    - add a 'status' command
+  * Fix the 03-configure patch's header: "Author" is a single-line field.
+  * Add an upstream metadata file.
+  * Drop the dante-server and dante-client.preinst files, upgrades from
+    version 0.92 are... not expected to happen.
+  * Drop the leftover debian/socks.h file; we've been using the upstream
+    one for more than ten years now.
+  * Use the upstream version of the socksify.1 manual page.
+  * Upload to unstable; dante has been gone from testing long enough
+    that this will not disrupt anything.
+  * Actually name the BSD-3-clause-alike license in the debian/copyright file
+    and break it into its own License section.
+  * Acknowledge the 1.1.19.dfsg-3.1 NMU by Matthias Klose <doko@debian.org>;
+    thanks for taking care of the libtool transition!
+  * Bump the year on my debian/* copyright notice.
 
- -- Michael Bienia <geser@ubuntu.com>  Mon, 14 Sep 2009 15:24:45 +0200
+ -- Peter Pentchev <roam@ringlet.net>  Fri, 08 Apr 2016 17:14:40 +0300
 
-dante (1.1.19.dfsg-3ubuntu1) jaunty; urgency=low
+dante (1.2.2+dfsg-3) experimental; urgency=low
 
-  * Merge from debian unstable to fix libsock0-dev installability, remaining
-    changes:
-    - debian/rules: invoke "dh_shlibdeps -a -- -xglibc-private" to avoid
-      unmet dependency with glibc-private if linked with glibc >= 2.8.
+  * Depend on a hardening package so that the build hardening is actually
+    done in the automated builds, and use the hardening-includes package
+    instead of hardening-wrapper so that the hardening flags are visible in
+    CFLAGS and LDFLAGS.
+  * Add the 17-cppcheck patch to fix two errors pointed out by cppcheck
+    and to silence two of its false-positive warnings.
 
- -- Scott Kitterman <scott@kitterman.com>  Sat, 04 Apr 2009 12:09:45 -0400
+ -- Peter Pentchev <roam@ringlet.net>  Fri, 24 Dec 2010 18:05:16 +0200
+
+dante (1.2.2+dfsg-2) experimental; urgency=low
+
+  * Really fix the FTBFS on GNU/Hurd:
+    - complete my 16-sa_siginfo patch
+    - in the 11-linux-eccentricities patch add GNU/Hurd, too, to
+      the list of architectures where the shared library search is done
+
+ -- Peter Pentchev <roam@ringlet.net>  Fri, 15 Oct 2010 17:23:21 +0300
+
+dante (1.2.2+dfsg-1) experimental; urgency=low
+
+  * Another try to get the "Linux eccentricities" code right -
+    fix the FTBFS on armel, mips and mipsel.  Closes: #598967
+  * New upstream version:
+    - refresh the 01-rename-library patch
+    - refresh the 15-lib-dante-client and do not let LIBDIR override
+      the /usr/lib/dante-client parent path
+    - add getsockopt() to libsocksd0's symbols files
+    - refresh the line numbers in the 03-configure, 11-linux-eccentricities,
+      and 13-c-warnings patches
+  * Add the 16-sa_siginfo patch to try to fix the FTBFS on GNU/Hurd.
+
+ -- Peter Pentchev <roam@ringlet.net>  Tue, 12 Oct 2010 17:34:29 +0300
+
+dante (1.2.1+dfsg-2) experimental; urgency=low
+
+  * Drop the automake1.9 build dependency after a discussion with
+    George Danchev.
+  * Reintroduce the 11-linux-eccentricities patch to fix the FTBFS on
+    GNU/kFreeBSD and, hopefully, Hurd.
+  * Provide a separate symbols file on kFreeBSD - there's no need for
+    the issetugid(2) and sockatmark(3) wrappers there.
+  * Switch to bzip2 compression for the Debian tarball.
+  * Switch to Git and point the Vcs-* fields to Gitorious.
+
+ -- Peter Pentchev <roam@ringlet.net>  Fri, 24 Sep 2010 17:51:03 +0300
+
+dante (1.2.1+dfsg-1) experimental; urgency=low
+
+  [ Peter Pentchev ]
+  * Convert to the 3.0 (quilt) source format.
+  * Simplify the rules file:
+    - use debhelper override rules
+    - use dh --with autotools_dev to take care of config.guess and config.sub
+    - do not pass --prefix to dh_auto_configure - it does it by itself
+    - use libsocksd0-dev.links
+    - bump the debhelper compatibility level to 8 and put the dh sequence name
+      first before any options
+  * Sort and beautify the Build-Depends line in the control file.
+  * Bump Standards-Version to 3.9.1:
+    - dante-client now Breaks older libdsocksd0 versions, no longer Conflicts
+      with them
+    - we no longer need to pass -D_REENTRANT to the compiler
+  * Use dpkg-buildflags from dpkg-dev 1.15.7 to obtain the default values
+    for CFLAGS, CPPFLAGS, and LDFLAGS.
+  * Update the copyright file to the latest DEP 5 format and bump the year on
+    my copyright notice.
+  * Shorten the Vcs-Browser URL.
+  * Add DEP 3 headers to all the patches.
+  * Keep the socksify.1 manual page in its own file in debian/ instead of
+    creating a whole file using a patch.
+  * New upstream version:
+    - Closes: #591082
+    - update the 01-rename-library, 02-rename-programs, 05-readme-functions,
+      07-rconnect, 10-config-users, 11-linux-eccentricities, 12-man-errors,
+      and 13-c-warnings patches
+    - remove the 04-faq, 09-getifa-address, and 14-httpproxy-underrun patches,
+      merged upstream independently
+    - remove the 11-linux-eccentricities patch - dante fails to build without
+      the macro masking
+    - refresh the 03-configure patch
+    - doc/faq.tex has disappeared, so do not install it
+    - libdsocksd0 has turned into a private library; add the 15-lib-dante-client
+      patch to swallow it back into dante-client as it used to be before
+      I broke it out in 1.1.19.dfsg-1
+    - update the libsocksd0 symbols file
+    - remove dlib/socks.map at clean-up time
+  * Explicitly disable GSSAPI support to avoid accidental dependencies arising
+    from the build environment.
+
+  [ George Danchev ]
+  * Added automake1.9 in Build-Depends
+  * Set DM-Upload-Allowed: yes
+
+ -- Peter Pentchev <roam@ringlet.net>  Fri, 03 Sep 2010 13:05:44 +0300
+
+dante (1.1.19.dfsg-3.1) unstable; urgency=medium
+
+  * Non-maintainer upload.
+  * Build-depend on libtool-bin. Closes: #761743.
+
+ -- Matthias Klose <doko@debian.org>  Thu, 09 Oct 2014 10:21:39 +0000
 
 dante (1.1.19.dfsg-3) unstable; urgency=low
 
@@ -108,13 +335,6 @@ dante (1.1.19.dfsg-3) unstable; urgency=low
     we are virtually guaranteed a quilt >= 0.40.
 
  -- Peter Pentchev <roam@ringlet.net>  Wed, 25 Mar 2009 14:18:11 +0200
-
-dante (1.1.19.dfsg-2ubuntu1) jaunty; urgency=low
-
-  * debian/rules: invoke "dh_shlibdeps -a -- -xglibc-private" to avoid
-    unmet dependency with glibc-private if linked with glibc >= 2.8.
-
- -- Luca Falavigna <dktrkranz@ubuntu.com>  Sat, 31 Jan 2009 04:10:19 +0100
 
 dante (1.1.19.dfsg-2) unstable; urgency=low
 
@@ -253,7 +473,7 @@ dante (1.1.18-2.1) unstable; urgency=high
 dante (1.1.18-2) unstable; urgency=low
 
   * applied patch from upstream (same as patch sent by Nicolas Leonard)
-    to fix PAM authentication failures.  Many thanks to Nicolas for 
+    to fix PAM authentication failures.  Many thanks to Nicolas for
     his work! (closes: #331538)
 
  -- Adrian Bridgett <bridgett@debian.org>  Sun,  9 Oct 2005 11:24:13 +0100
@@ -318,7 +538,7 @@ dante (1.1.11.12p1-4) unstable; urgency=low
 dante (1.1.11.12p1-3) unstable; urgency=low
 
   * apply fix for dynamic port forwarding - thanks to Peter Amstutz
-    (closes: 140730) 
+    (closes: 140730)
   * improve libsocksd package description (closes: #135755)
 
  -- Adrian Bridgett <bridgett@debian.org>  Mon,  1 Apr 2002 10:29:31 +0100
@@ -524,4 +744,3 @@ dante (0.92.0-pre3-1) unstable; urgency=low
   * Initial release.
 
  -- Adrian Bridgett <bridgett@debian.org>  Sun, 21 Mar 1999 16:45:45 +0000
-

@@ -1,0 +1,7 @@
+usr/lib/*/libdsocksd.la
+usr/lib/*/libdsocksd.so
+usr/lib/*/libsocksd.la
+usr/sbin/sockd
+usr/share/man/man8/sockd.8
+usr/share/man/man5/sockd.conf.5
+usr/share/man/man5/socks.conf.5

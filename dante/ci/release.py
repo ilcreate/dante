@@ -15,11 +15,29 @@ def verify_assets(directory):
     if not data["tag"]:
         raise ValueError("CI preview artifacts cannot be released")
     required = {data["source"], "build-metadata.json"}
+    expected_metadata = {}
     for arch, rpm_arch in [("amd64", "x86_64"), ("arm64", "aarch64")]:
-        for name in [f"dante-server_{version}-{revision}_debian12_{arch}.deb",
-                     f"dante-server-{version}-{revision}.el9.{rpm_arch}.rpm",
-                     f"dante-server-{version}-{revision}-macos15-{arch}.pkg"]:
+        artifacts = {
+            f"dante-server_{version}-{revision}+ubuntu22.04_{arch}.deb": {
+                "package_version": f"{version}-{revision}+ubuntu22.04",
+                "base_package_version": data["package_version"],
+                "format": "deb", "target": "ubuntu22.04", "architecture": arch,
+            },
+            f"dante-server_{version}-{revision}+debian12_{arch}.deb": {
+                "package_version": f"{version}-{revision}+debian12",
+                "base_package_version": data["package_version"],
+                "format": "deb", "target": "debian12", "architecture": arch,
+            },
+            f"dante-server-{version}-{revision}.el9.{rpm_arch}.rpm": {
+                "package_version": data["package_version"],
+            },
+            f"dante-server-{version}-{revision}-macos15-{arch}.pkg": {
+                "package_version": data["package_version"],
+            },
+        }
+        for name, identity in artifacts.items():
             required.update([name, name + ".build-info.json"])
+            expected_metadata[name + ".build-info.json"] = identity
     actual = {p.name for p in directory.iterdir() if p.is_file()} - {"SHA256SUMS"}
     if actual != required:
         raise ValueError(f"release assets mismatch: missing={required - actual}, extra={actual - required}")
@@ -28,9 +46,14 @@ def verify_assets(directory):
             raise ValueError(f"empty artifact: {name}")
         if name.endswith(".build-info.json"):
             info = json.loads((directory / name).read_text())
-            for key in ["commit", "tag", "package_version"]:
+            for key in ["commit", "tag"]:
                 if info[key] != data[key]:
                     raise ValueError(f"{name}: inconsistent {key}")
+            for key, expected in expected_metadata[name].items():
+                if info.get(key) != expected:
+                    raise ValueError(f"{name}: inconsistent {key}")
+            if info.get("base_package_version", data["package_version"]) != data["package_version"]:
+                raise ValueError(f"{name}: inconsistent base_package_version")
     return data, sorted(required)
 
 

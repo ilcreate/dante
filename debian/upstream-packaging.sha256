@@ -1,0 +1,6 @@
+# Official packaging references used to refresh debian/.
+# Debian 12: https://deb.debian.org/debian/pool/main/d/dante/
+# Ubuntu 22.04: https://archive.ubuntu.com/ubuntu/pool/universe/d/dante/
+# The matching .dsc files publish the same SHA-256 values.
+7ce091485ce0b60f1483e9f9c86da45cd450d8e36e8a39ff817110b6c3eebe6f  dante_1.4.2+dfsg-7.debian.tar.xz
+81b5341bfca2b9892159e311618b2efa8f7d31be766bf5329cbc7747bd5c9de1  dante_1.4.2+dfsg-7build4.debian.tar.xz

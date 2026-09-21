@@ -1,0 +1,26 @@
+Description: Adapt the configure script for the Debian environment.
+ Always use Debian's libtool and libdl.so.2.
+ Do not add "-g -O2" to the Debian build's CFLAGS.
+Author: Peter Pentchev <roam@ringlet.net>
+Forwarded: not-needed
+Last-Update: 2016-04-06
+
+--- a/configure.ac
++++ b/configure.ac
+@@ -83,2 +83,4 @@
+ LT_INIT
++strippedCFLAGS=`echo "$CFLAGS" | sed -e 's/^[[:space:]]*//; s/[[:space:]]\+/ /g; s/[[:space:]]*$//'`
++if test "$strippedCFLAGS" = '-g -O2'; then CFLAGS=''; fi
+ autoconf_compflags="$CFLAGS"
+--- a/preload.m4
++++ b/preload.m4
+@@ -564,7 +564,8 @@
+ 		;;
+ 
+ 	    *)
+-		LIBRARY_DLOPEN="${base_library_path}libdl.${SOLIB_POSTFIX}"
++	    	# multiarch-find-lib only needs the filename anyway
++		LIBRARY_DLOPEN="/lib/libdl.so.2"
+ 		;;
+ 	esac
+ 	SOCKSIFY_PRELOAD_LIBS="${SOCKSIFY_PRELOAD_LIBS}${LIBRARY_DLOPEN:+${PRELOAD_SEPERATOR}}${LIBRARY_DLOPEN}"

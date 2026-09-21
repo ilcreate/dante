@@ -25,6 +25,7 @@ or authorship on this work.  Please see [LICENSE](dante/LICENSE) file for more i
 
 ## Documentation:
 
+ * [Debian/Ubuntu package builds, upgrades, PAM, and rollback](dante/docs/debian-packages.md)
  * [Dante 1.4.x Docs](https://www.inet.no/dante/doc/1.4.x/index.html)
  * [Dante 1.3.x Docs](https://www.inet.no/dante/doc/1.3.x/index.html)
  * [Dante 1.2.x Docs](https://www.inet.no/dante/doc/1.2.x/index.html)

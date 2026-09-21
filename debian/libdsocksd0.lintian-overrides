@@ -1,0 +1,5 @@
+# This library is only useful when being preloaded.  The symbols that
+# it overlays are the libc networking functions; it would be weird to
+# specify the libc headers package here.
+#
+libdsocksd0: symbols-file-missing-build-depends-package-field

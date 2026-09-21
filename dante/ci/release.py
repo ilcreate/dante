@@ -78,7 +78,7 @@ def main():
         raise RuntimeError("refusing to overwrite a published release; use a new revision tag")
     if not matching:
         subprocess.run(["gh", "release", "create", tag, "--repo", repo, "--verify-tag", "--draft",
-                        "--title", f"Dante {data['package_version']}", "--generate-notes"], check=True)
+                        "--title", f"v{data['package_version']}", "--generate-notes"], check=True)
     subprocess.run(["gh", "release", "upload", tag, "--repo", repo, "--clobber",
                     *[str(directory / name) for name in names + ["SHA256SUMS"]]], check=True)
     print(f"Draft {tag} is ready. Review the artifacts and publish it from GitHub Releases.")

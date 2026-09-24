@@ -5,31 +5,29 @@
 DEB=$(CURDIR)/debian/tmp
 DEV=debian/libsocksd0-dev
 
-include /usr/share/quilt/quilt.make
+# Aim for the top, adapt if anything should break on the buildds.
+DEB_BUILD_MAINT_OPTIONS=	hardening=+all
+export DEB_BUILD_MAINT_OPTIONS
 
-ifeq (,$(filter nohardening,$(DEB_BUILD_OPTIONS)))
-export DEB_BUILD_HARDENING=1
-else
-export DEB_BUILD_HARDENING=0
-endif
-CFLAGS+=	-D_REENTRANT
-
-build:	build-stamp
-
-build-stamp: ${QUILT_STAMPFN}
-	dh build --before dh_auto_configure
-	cp /usr/share/misc/config.guess /usr/share/misc/config.sub . 
-	dh_auto_configure -- CFLAGS="${CFLAGS}" --prefix=/usr \
+override_dh_auto_configure:
+	dh_auto_configure -- \
 	  --with-socks-conf=/etc/dante.conf \
 	  --with-sockd-conf=/etc/danted.conf \
-	  --with-pidfile=/var/run/danted.pid
+	  --with-pidfile=/var/run/danted.pid \
+	  --without-gssapi
+	rm -f dlib/config_parse.c dlib/config_scan.c
 	cp lib/config_parse.c lib/config_scan.c dlib/
+	rm -f sockd/config_parse.c sockd/config_scan.c
 	cp lib/config_parse.c lib/config_scan.c sockd/
-	dh build --remaining
-	touch build-stamp
+	grep -Eq '^#define HAVE_COND_PAM 1$$' include/autoconf.h
+	grep -Eq '^#define HAVE_COND_LIBWRAP 1$$' include/autoconf.h
 
-clean:
-	dh "$@" --before dh_clean
+override_dh_auto_test:
+	dh_auto_test
+	bash sockd/tests/run-stats-api-tests.sh
+
+override_dh_auto_clean:
+	dh_auto_clean
 	for d in sockd dlib; do \
 	  cd $$d; \
 	  for i in *; do \
@@ -37,15 +35,9 @@ clean:
 	  done; \
 	  cd ..; \
 	done
-	$(MAKE) -f debian/rules unpatch
 	rm -rf example/renamed
-	dh_clean config.guess config.sub \
-	  dlib/config_parse.c dlib/config_scan.c \
-	  sockd/config_parse.c sockd/config_scan.c
-	dh clean --remaining
 
-install:	build
-	dh "$@" --before dh_install
+override_dh_install:
 	cp $(DEB)/usr/share/man/man5/socks.conf.5  $(DEB)/usr/share/man/man5/dante.conf.5
 	cp $(DEB)/usr/share/man/man5/sockd.conf.5  $(DEB)/usr/share/man/man5/danted.conf.5
 	cp $(DEB)/usr/share/man/man8/sockd.8 $(DEB)/usr/share/man/man8/danted.8
@@ -57,22 +49,31 @@ install:	build
 	for i in example/socks*.conf; do \
 		sed -e 's/sample socks.conf/sample dante.conf/' < "$$i" > example/renamed/"`basename $$i | sed -e s/socks/dante/`"; \
 	done
+	dh_install
+
+override_dh_installdocs:
 	dh_installdocs -A README doc/README.usage doc/README.survey BUGS CREDITS SUPPORT
 	dh_installdocs -pdante-client doc/README.socksify
 	dh_installdocs -pdante-client -pdante-server
 	dh_installdocs -pdante-server doc/SOCKS4.protocol
-	dh_installchangelogs NEWS
-	dh_installinit -pdante-server -r --init-script=danted
-	dh_link -plibsocksd0-dev /usr/lib/libsocksd0.so.0 /usr/lib/libsocksd.so
-	dh "$@" --remaining
 
-binary-indep:	build install
-	# Nothing to do here
+override_dh_installchangelogs:
+	dh_installchangelogs
+	set -e; for p in $$(dh_listpackages); do \
+		install -m 644 NEWS "debian/$$p/usr/share/doc/$$p/"; \
+	done
 
-binary-arch:	build install
-	dh "$@" --before dh_shlibdeps
-	dh_shlibdeps -a -- -xglibc-private
-	dh "$@" --after dh_shlibdeps
+override_dh_installinit:
+	dh_installinit -pdante-server --name=danted --error-handler=dante_service_error
 
-binary:	binary-indep binary-arch
-.PHONY: build clean binary-indep binary-arch binary
+override_dh_installsystemd:
+	dh_installsystemd -pdante-server --name=danted
+
+override_dh_makeshlibs:
+	dh_makeshlibs -- -c4
+
+override_dh_missing:
+	dh_missing --fail-missing
+
+%:
+	dh '$@'

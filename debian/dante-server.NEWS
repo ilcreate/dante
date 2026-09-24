@@ -1,0 +1,11 @@
+dante-server (1.4.2+dfsg-4) unstable; urgency=medium
+
+  The danted.service file now enables several hardening options:
+  PrivateTmp, InaccessibleDirectories, ReadOnlyDirectories, and
+  DeviceAllow.  If the default values specified in the service file are
+  not suitable for a specific installation, they may be overridden by
+  using the "drop-in directory" mechanism as described in
+  the https://wiki.debian.org/systemd#Creating_or_altering_services and
+  https://manpages.debian.org/man/5/systemd.unit documentation.
+
+ -- Peter Pentchev <roam@debian.org>  Mon, 17 Dec 2018 18:01:57 +0200

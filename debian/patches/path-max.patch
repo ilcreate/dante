@@ -1,0 +1,18 @@
+Description: Use a sensible value for PATH_MAX if it is not defined.
+Author: Peter Pentchev <roam@ringlet.net>
+Forwarded: no
+Last-Update: 2017-01-12
+
+--- a/include/osdep.h
++++ b/include/osdep.h
+@@ -475,6 +475,10 @@
+ #define ETHER_ADDR_LEN  (6)
+ #endif /* !ETHER_ADDR_LEN */
+ 
++#ifndef PATH_MAX
++#define PATH_MAX	1024
++#endif
++
+ #if !HAVE_STRUCT_IPOPTS
+ #define   MAX_IPOPTLEN   40
+ struct ipoption {

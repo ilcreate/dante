@@ -1,0 +1,17 @@
+Description: Make sure SIGPWR is not the same as SIGINFO or SIGLOST
+ Avoid a duplicate case value in a switch statement on e.g. Alpha or Sparc.
+Author: Peter Pentchev <roam@ringlet.net>
+Forwarded: not-yet
+Last-Update: 2017-01-09
+
+--- a/lib/tostring.c
++++ b/lib/tostring.c
+@@ -1551,7 +1551,7 @@
+          return "SIGPROF";
+ #endif /* SIGPROF */
+ 
+-#ifdef SIGPWR
++#if (defined SIGPWR) && (!defined SIGINFO || SIGINFO != SIGPWR) && (!defined SIGLOST || SIGLOST != SIGPWR)
+       case SIGPWR:
+          return "SIGPWR";
+ #endif /* SIGPWR */

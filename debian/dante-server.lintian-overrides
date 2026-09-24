@@ -1,0 +1,4 @@
+# Ubuntu 22.04 provides /lib/lsb/init-functions in lsb-base.  Debian 12
+# keeps lsb-base as a transitional package to sysvinit-utils, so retaining
+# this dependency lets the same packaging install its SysV script on both.
+dante-server: depends-on-obsolete-package Depends: lsb-base

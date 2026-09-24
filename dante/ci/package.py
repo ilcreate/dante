@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create native server packages from a built source tree (no third-party packager)."""
+"""Create RPM and macOS server packages from a built source tree."""
 
 import json
 import platform
@@ -31,6 +31,8 @@ def write(path, text, mode=0o644):
 
 def main():
     kind, source, metadata, output = sys.argv[1:]
+    if kind not in {"rpm", "macos"}:
+        raise ValueError(f"unknown package format: {kind}")
     source, output = Path(source).resolve(), Path(output).resolve()
     data = json.loads(Path(metadata).read_text())
     machine = platform.machine()
@@ -54,31 +56,12 @@ def main():
             if not path.name.endswith(".local.md"):
                 copy(path, payload, f"{docs}/statistics-api/{path.name}")
         data.update({"format": kind, "architecture": arch,
+                     "base_package_version": package_version,
                      "build_platform": platform.platform(),
                      "features": "server; native password auth; no optional auth modules"})
         write(payload / docs / "build-info.json", json.dumps(data, indent=2) + "\n")
 
-        if kind == "deb":
-            copy(CI / "packaging/sockd.conf", payload, "etc/sockd.conf")
-            copy(CI / "packaging/sockd.service", payload, "usr/lib/systemd/system/sockd.service")
-            # Resolve ABI dependencies from the actual ELF binary on Debian 12.
-            write(work / "debian/control", "Source: dante-server\nMaintainer: Dante package maintainers\n\nPackage: dante-server\nArchitecture: any\nDescription: Dante SOCKS server\n")
-            deps = subprocess.check_output(
-                ["dpkg-shlibdeps", "-O", "-e" + str(payload / "usr/sbin/sockd")],
-                cwd=work, text=True).strip().removeprefix("shlibs:Depends=")
-            write(payload / "DEBIAN/control", f"Package: dante-server\nVersion: {package_version}\nArchitecture: {arch}\nMaintainer: Dante package maintainers\nSection: net\nPriority: optional\nDepends: {deps}\nConflicts: dante-server-stats\nHomepage: https://www.inet.no/dante/\nDescription: Dante SOCKS server with local statistics API\n This product includes software developed by Inferno Nettverk A/S, Norway.\n")
-            write(payload / "DEBIAN/conffiles", "/etc/sockd.conf\n")
-            write(payload / "DEBIAN/postinst", "#!/bin/sh\nset -e\nif [ \"$1\" = configure ] && [ -d /run/systemd/system ]; then\n  systemctl daemon-reload\nfi\n", 0o755)
-            write(payload / "DEBIAN/prerm", "#!/bin/sh\nset -e\nif [ \"$1\" = remove ] && [ -d /run/systemd/system ]; then\n  systemctl stop sockd.service || true\nfi\n", 0o755)
-            write(payload / "DEBIAN/postrm", "#!/bin/sh\nset -e\nif [ -d /run/systemd/system ]; then\n  systemctl daemon-reload\nfi\n", 0o755)
-            artifact = output / f"dante-server_{package_version}_debian12_{arch}.deb"
-            run("dpkg-deb", "--root-owner-group", "--build", payload, artifact)
-            run("dpkg-deb", "--info", artifact)
-            # Install with the real package manager, then test the installed binary.
-            run("dpkg", "-i", artifact)
-            run("/usr/sbin/sockd", "-V", "-f", "/etc/sockd.conf")
-            run(sys.executable, CI / "smoke.py", "/usr/sbin/sockd", "--relay")
-        elif kind == "rpm":
+        if kind == "rpm":
             copy(CI / "packaging/sockd.conf", payload, "etc/sockd.conf")
             copy(CI / "packaging/sockd.service", payload, "usr/lib/systemd/system/sockd.service")
             for directory in ["BUILD", "BUILDROOT", "RPMS", "SOURCES", "SPECS", "SRPMS"]:
@@ -142,8 +125,6 @@ if [ -d /run/systemd/system ]; then systemctl daemon-reload; fi
             if len(binaries) != 1:
                 raise RuntimeError("package must contain exactly one sockd")
             run(sys.executable, CI / "smoke.py", binaries[0])
-        else:
-            raise ValueError(f"unknown package format: {kind}")
         shutil.copyfile(payload / docs / "build-info.json", output / (artifact.name + ".build-info.json"))
 
 

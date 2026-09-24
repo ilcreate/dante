@@ -1,6 +1,8 @@
 [
-  {"format": "deb", "arch": "amd64", "runner": "ubuntu-24.04", "image": "debian:12-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171"},
-  {"format": "deb", "arch": "arm64", "runner": "ubuntu-24.04-arm", "image": "debian:12-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171"},
+  {"format": "deb", "target": "ubuntu22.04", "arch": "amd64", "runner": "ubuntu-24.04", "image": "ubuntu:22.04@sha256:b8b6ee6aa931ecd9d0d952abc34dc0e5f7c6a30c6bb71b079fe399fde0329c02"},
+  {"format": "deb", "target": "ubuntu22.04", "arch": "arm64", "runner": "ubuntu-24.04-arm", "image": "ubuntu:22.04@sha256:b8b6ee6aa931ecd9d0d952abc34dc0e5f7c6a30c6bb71b079fe399fde0329c02"},
+  {"format": "deb", "target": "debian12", "arch": "amd64", "runner": "ubuntu-24.04", "image": "debian:12-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171"},
+  {"format": "deb", "target": "debian12", "arch": "arm64", "runner": "ubuntu-24.04-arm", "image": "debian:12-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171"},
   {"format": "rpm", "arch": "amd64", "runner": "ubuntu-24.04", "image": "rockylinux:9@sha256:d7be1c094cc5845ee815d4632fe377514ee6ebcf8efaed6892889657e5ddaaa6"},
   {"format": "rpm", "arch": "arm64", "runner": "ubuntu-24.04-arm", "image": "rockylinux:9@sha256:d7be1c094cc5845ee815d4632fe377514ee6ebcf8efaed6892889657e5ddaaa6"},
   {"format": "macos", "arch": "amd64", "runner": "macos-15-intel", "image": ""},

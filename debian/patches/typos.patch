@@ -1,0 +1,27 @@
+Description: Preserve the Debian danted.conf template text.
+Author: Peter Pentchev <roam@ringlet.net>
+Origin: Debian, dante 1.4.2+dfsg-7
+Forwarded: not-needed
+Last-Update: 2019-09-12
+
+Only the packaged server configuration hunk remains.  The other fixes from
+the Debian 1.4.2 patch are already upstream or do not apply to this source.
+
+--- a/example/sockd.conf
++++ b/example/sockd.conf
+@@ -118,12 +118,12 @@
+ # Misc options.
+ #
+ 
+-# how many seconds can pass from when a client connects til it has
+-# sent us it's request?  Adjust according to your network performance
++# how many seconds can pass from when a client connects till it has
++# sent us its request?  Adjust according to your network performance
+ # and methods supported.
+ #timeout.negotiate: 30   # on a lan, this should be enough.
+ 
+-# how many seconds can the client and it's peer idle without sending
++# how many seconds can the client and its peer idle without sending
+ # any data before we dump it?  Unless you disable tcp keep-alive for
+ # some reason, it's probably best to set this to 0, which is
+ # "forever".

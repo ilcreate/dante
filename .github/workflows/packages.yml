@@ -50,9 +50,9 @@ jobs:
           python3 - <<'PY'
           import json, os
           from pathlib import Path
+          from dante.ci.metadata import select_targets
           targets = json.loads(Path('dante/ci/targets.json').read_text())
-          if os.environ['FULL_MATRIX'] != 'true':
-              targets = targets[:1]
+          targets = select_targets(targets, os.environ['FULL_MATRIX'] == 'true')
           with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
               out.write('value=' + json.dumps({'include': targets}) + '\n')
           PY
@@ -65,7 +65,7 @@ jobs:
 
   package:
     needs: source
-    name: ${{ matrix.format }}-${{ matrix.arch }}
+    name: ${{ matrix.format }}-${{ matrix.target || 'native' }}-${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     strategy:
@@ -84,20 +84,21 @@ jobs:
         env:
           PACKAGE_FORMAT: ${{ matrix.format }}
           BUILD_IMAGE: ${{ matrix.image }}
+          PACKAGE_TARGET: ${{ matrix.target }}
         run: |
           mkdir -p dist
           docker run --rm \
             --mount "type=bind,source=$GITHUB_WORKSPACE,target=/repo,readonly" \
             --mount "type=bind,source=$GITHUB_WORKSPACE/dist,target=/out" \
             "$BUILD_IMAGE" bash -c \
-            'bash /repo/dante/ci/install-build-deps.sh "$1" && bash /repo/dante/ci/build-package.sh "$1" /repo/input /out' \
-            bash "$PACKAGE_FORMAT"
+            'bash /repo/dante/ci/install-build-deps.sh "$1" && bash /repo/dante/ci/build-package.sh "$1" /repo/input /out "$2"' \
+            bash "$PACKAGE_FORMAT" "$PACKAGE_TARGET"
       - name: Build macOS installer; test extracted daemon
         if: matrix.format == 'macos'
         run: bash dante/ci/build-package.sh macos input dist
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: release-${{ matrix.format }}-${{ matrix.arch }}
+          name: release-${{ matrix.format }}-${{ matrix.target || 'native' }}-${{ matrix.arch }}
           path: |
             dist/*.deb
             dist/*.rpm
@@ -108,6 +109,10 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
-          name: logs-${{ matrix.format }}-${{ matrix.arch }}
-          path: dist/*.log
+          name: logs-${{ matrix.format }}-${{ matrix.target || 'native' }}-${{ matrix.arch }}
+          path: |
+            dist/*.log
+            dist/diagnostics/**
+            dist/*.changes
+            dist/*.buildinfo
           retention-days: 7

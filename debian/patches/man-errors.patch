@@ -1,0 +1,97 @@
+Description: Fix the manual page errors.
+ - replace mdoc macros with man ones
+ - use minus signs instead of hyphens where necessary
+Author: Peter Pentchev <roam@ringlet.net>
+Forwarded: no
+Last-Update: 2016-04-06
+
+--- a/doc/sockd.conf.5
++++ b/doc/sockd.conf.5
+@@ -315,7 +315,7 @@
+ .IP \fBtimeout.io\fP
+ The number of seconds an established connection can be idle.
+ The default is 0, meaning forever.
+-See also the "-n" option in the danted(8) manpage.
++See also the "\-n" option in the danted(8) manpage.
+ 
+ Individual timeouts can be set for TCP and UDP by suffixing io with
+ ".<protocolname>", i.e. \fBtimeout.io.tcp\fP or \fBtimeout.io.udp\fP.
+@@ -697,7 +697,7 @@
+ .IP \fBport\fP
+ Parameter to \fBfrom\fP, \fBto\fP and \fBvia\fP.  Accepts the keywords
+ \fBeq/=, neq/!=, ge/>=, le/<=, gt/>, lt/<\fP followed by a number.
+-A port range can also be given as "port <start #> - <end #>", which
++A port range can also be given as "port <start #> \- <end #>", which
+ will match all port numbers within the range <start #> and <end #>.
+ 
+ The default is to match all ports.
+@@ -710,10 +710,10 @@
+ The syntax of the redirect statement is
+ as follows:
+ 
+-.D1
++.IP
+ \fBredirect\fP from: \fBADDRESS\fP
+ 
+-\".D1
++\".IP
+ \"\fBredirect\fP to: \fBADDRESS\fP
+ 
+ See the redirect manual for detailed information.
+@@ -777,7 +777,7 @@
+ .IP \fBport\fP
+ Parameter to \fBfrom\fP, \fBto\fP and \fBvia\fP.  Accepts the keywords
+ \fBeq/=, neq/!=, ge/>=, le/<=, gt/>, lt/<\fP followed by a number.
+-A portrange can also be given as "port <start #> - <end #>", which
++A portrange can also be given as "port <start #> \- <end #>", which
+ will match all port numbers within the range <start #> and <end #>.
+ 
+ The default is all ports.
+@@ -798,10 +798,10 @@
+ The syntax of the redirect statement is
+ as follows:
+ 
+-.D1
++.IP
+ \fBredirect\fP from: \fBADDRESS\fP
+ 
+-.D1
++.IP
+ \fBredirect\fP to: \fBADDRESS\fP
+ 
+ The semantics of \fBfrom\fP and \fBto\fP vary according to
+@@ -820,7 +820,7 @@
+ 
+ .IP \fBudp.portrange\fP
+ The argument to this keyword is two port numbers, separated by
+-a dash ('-').  They specify the UDP port-range that will be
++a dash ('\-').  They specify the UDP port-range that will be
+ used between the \fBsocks-client\fP and the \fBDante-server for UDP
+ packets.  Note that this has no relation to the UDP port-range
+ used between the \fBDante-server and external, non-socks, clients/servers.
+@@ -878,12 +878,12 @@
+ The following example shows the general monitor syntax, specifying a
+ monitor without any monitoring operations:
+ 
+-.Vb 8
++.RS 1
+  monitor {
+   from: 0.0.0.0/0 to: www.example.org port = 80
+   protocol: tcp
+  }
+-.Ve
++.RE
+ 
+ A monitor can include many of the same keywords that are available in
+ the Dante ACL rules. The following subset is currently supported:
+--- a/doc/socksify.1
++++ b/doc/socksify.1
+@@ -138,7 +138,7 @@
+    Karl-Andre' Skevik
+ .SH SEE ALSO
+ socks.conf(5), sockd(8), sockd.conf(5)
+-.Pp
++.PP
+ Information about new releases and other related issues can be found
+ on the
+ \fBDante\fP

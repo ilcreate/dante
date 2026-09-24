@@ -1,0 +1,16 @@
+Subject: Support kFreeBSD and the Hurd.
+Author: Peter Pentchev <roam@ringlet.net>
+Forwarded: not-yet
+Last-Update: 2017-09-27
+
+--- a/compiler.m4
++++ b/compiler.m4
+@@ -25,7 +25,7 @@
+ 	CPPFLAGS="${CPPFLAGS}${CPPFLAGS:+ }-D__EXTENSIONS__ -DBSD_COMP"
+ 	;;
+ 
+-    *-*-linux-*)
++    *-*-linux-*|*-gnu)
+ 	CPPFLAGS="${CPPFLAGS}${CPPFLAGS:+ }-D_XOPEN_SOURCE=600 -D_XOPEN_SOURCE_EXTENDED"
+ 	CPPFLAGS="${CPPFLAGS}${CPPFLAGS:+ }-D_BSD_SOURCE -D_DEFAULT_SOURCE"
+ 	;;

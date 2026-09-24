@@ -1,17 +1,35 @@
-The dante package uses quilt to maintain local changes to
-the dante distribution.  The Debian-specific patches are maintained
-in the debian/patches/ directory.
+Debian packaging baseline
+=========================
 
-To apply all the patches, preparing the source for building, use:
-  debian/rules patch
+This directory is based on the Debian 12 packaging for
+dante 1.4.2+dfsg-7.  Ubuntu 22.04's 1.4.2+dfsg-7build4 packaging was
+also checked; the only difference between the two official debian.tar.xz
+archives is debian/changelog.  Download locations and the SHA-256 values
+published by their .dsc files are recorded in upstream-packaging.sha256.
 
-To revert the patches, preparing to build a source package, use:
-  debian/rules unpatch
+The packaging is applied to newer upstream Dante sources.  The
+configure.patch context was refreshed for the current configure.ac.  The
+already-applied method_uname.c hunk was removed from cppcheck.patch.
+sa_siginfo.patch (non-Linux portability) was omitted because parts of it are
+already upstream and its remaining hunks do not apply to the current sources.
+typos.patch retains only the danted.conf template hunk so the package installs
+the same configuration bytes as Debian 12; its other fixes are already
+upstream or no longer apply.  The target package platforms are Linux on amd64
+and arm64.
 
-You do not need to manually execute these targets when building
-the package; they are part of the debian/rules target chain.
+The two pam.servicename documentation hunks were removed from
+rename-programs.patch.  Renaming the executable and service does not change
+Dante's compiled DEFAULT_PAMSERVICENAME, which remains sockd; keeping that
+default also preserves existing host PAM policies during an upgrade.
 
-For more information on the quilt integration with Debian packages,
-as well as editing, adding or removing patches, please see
-the quilt documentation; in recent versions of the Debian package of
-quilt, start at the /usr/share/doc/quilt/README.source file.
+Current configure output creates config-parser links in dlib/ and sockd/.
+debian/rules removes those links before copying the generated parser sources,
+preserving the intent of the Debian 1.4.2 packaging on current sources.
+
+The dante-server package continues to depend on lsb-base because Ubuntu 22.04
+ships /lib/lsb/init-functions there.  Debian 12 treats lsb-base as a
+transitional package to sysvinit-utils, so the corresponding Lintian error is
+overridden for this cross-distribution package.
+
+The package uses the 3.0 (quilt) source format.  dpkg-buildpackage applies the
+patch series automatically.

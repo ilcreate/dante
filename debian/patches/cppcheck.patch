@@ -1,0 +1,55 @@
+Description: Fix some cppcheck warnings.
+Author: Peter Pentchev <roam@ringlet.net>
+Forwarded: no
+Last-Update: 2019-07-16
+
+--- a/lib/address.c
++++ b/lib/address.c
+@@ -1227,8 +1227,8 @@
+                serr("%s: mutex_init() failed", function);
+          }
+       }
+-#endif /* HAVE_PTHREAD_H */
+    }
++#endif /* HAVE_PTHREAD_H */
+ 
+    inited         = 1;
+    doing_addrinit = 0;
+--- a/lib/clientprotocol.c
++++ b/lib/clientprotocol.c
+@@ -1213,7 +1213,12 @@
+    SOCKS_SIGUNBLOCK_IF_CLIENT(&oldset);
+ 
+    if (gss_err_isset(major_status, minor_status, tmpbuf, sizeof(tmpbuf))) {
+-      snprintf(emsg, emsglen, "gss_import_name() failed: %s", emsg);
++      char *ebuf = malloc(emsglen);
++      if (ebuf != NULL) {
++        snprintf(ebuf, emsglen, "%s", emsg);
++        snprintf(emsg, emsglen, "gss_import_name() failed: %s", ebuf);
++        free(ebuf);
++      }
+ 
+       SOCKS_SIGUNBLOCK_IF_CLIENT(&oldset);
+       goto error;
+--- a/lib/config_parse.y
++++ b/lib/config_parse.y
+@@ -965,7 +965,7 @@
+ #if !SOCKS_CLIENT
+    static ruleaddr_t mem;
+    struct servent    *service;
+-   serverstate_t     statemem;
++   static serverstate_t statemem;
+ 
+    bzero(&statemem, sizeof(statemem));
+    state               = &statemem;
+--- a/lib/config_parse.c
++++ b/lib/config_parse.c
+@@ -3936,7 +3936,7 @@
+ #if !SOCKS_CLIENT
+    static ruleaddr_t mem;
+    struct servent    *service;
+-   serverstate_t     statemem;
++   static serverstate_t statemem;
+ 
+    bzero(&statemem, sizeof(statemem));
+    state               = &statemem;

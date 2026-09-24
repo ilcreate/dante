@@ -1,0 +1,22 @@
+{
+  "ubuntu22.04/amd64": {
+    "url": "https://cloud-images.ubuntu.com/releases/jammy/release-20260913/ubuntu-22.04-server-cloudimg-amd64.img",
+    "algorithm": "sha256",
+    "checksum": "9144540e8af7637d258b50dbabe82ce1aa6752c9574fedfb048270da0e087899"
+  },
+  "ubuntu22.04/arm64": {
+    "url": "https://cloud-images.ubuntu.com/releases/jammy/release-20260913/ubuntu-22.04-server-cloudimg-arm64.img",
+    "algorithm": "sha256",
+    "checksum": "ab5fcc80611a98bf999018045119d87b3a0e7c78f3b43b254b93d5c22bae3ff6"
+  },
+  "debian12/amd64": {
+    "url": "https://cloud.debian.org/images/cloud/bookworm/20260909-2596/debian-12-genericcloud-amd64-20260909-2596.qcow2",
+    "algorithm": "sha512",
+    "checksum": "08fea112563461f251f3c95a5c5cf8cb25eb60f74cec03e85a97ff91d3efef3059d35837598bbb476008f20db6d3bdc7143c5f2f2a9a6da394a0acc601fd5986"
+  },
+  "debian12/arm64": {
+    "url": "https://cloud.debian.org/images/cloud/bookworm/20260909-2596/debian-12-genericcloud-arm64-20260909-2596.qcow2",
+    "algorithm": "sha512",
+    "checksum": "88a45e5e40e77e1d126ac25e43ed636ebbbb9d6351426b6e80de9b1c5a7b05bb6d5d79801e80f3be2a607d6fe37916190abd0195147be7694a5296d6b14f67be"
+  }
+}
